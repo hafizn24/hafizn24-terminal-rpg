@@ -31,14 +31,11 @@ export function DungeonScreen() {
     }
   }, [dungeon, player, setDungeon, addLog]);
 
-  if (!player || !dungeon) return <div className="text-terminal-dim">Loading...</div>;
-
-  const currentRoom: Room = dungeon.rooms[dungeon.playerPos.y][dungeon.playerPos.x];
-  const adjacentRooms = getAdjacentRooms(dungeon);
+  const adjacentRooms = dungeon ? getAdjacentRooms(dungeon) : { up: false, down: false, left: false, right: false };
 
   const handleMove = (dx: number, dy: number) => {
-    const d = dungeonRef.current!;
-    const p = playerRef.current!;
+    const d = dungeonRef.current;
+    const p = playerRef.current;
     if (!d || !p) return;
     const newX = d.playerPos.x + dx;
     const newY = d.playerPos.y + dy;
@@ -101,7 +98,7 @@ export function DungeonScreen() {
   };
 
   const handleDescend = () => {
-    const p = playerRef.current!;
+    const p = playerRef.current;
     if (!p) return;
     const nextFloor = p.floor + 1;
     updatePlayer({ floor: nextFloor });
@@ -110,6 +107,24 @@ export function DungeonScreen() {
     addLog(`Descended to floor ${nextFloor}.`, 'system');
     useGameStore.getState().updateQuestProgress('floor', 'any');
   };
+
+  const keyMap = useMemo(() => ({
+    w: () => handleMove(0, -1),
+    ArrowUp: () => handleMove(0, -1),
+    s: () => handleMove(0, 1),
+    ArrowDown: () => handleMove(0, 1),
+    a: () => handleMove(-1, 0),
+    ArrowLeft: () => handleMove(-1, 0),
+    d: () => handleMove(1, 0),
+    ArrowRight: () => handleMove(1, 0),
+    escape: () => setScreen('town'),
+  }), [dungeon]);
+
+  useKeyboard(keyMap);
+
+  if (!player || !dungeon) return <div className="text-terminal-dim">Loading...</div>;
+
+  const currentRoom: Room = dungeon.rooms[dungeon.playerPos.y][dungeon.playerPos.x];
 
   const roomTypeSymbol = (room: Room) => {
     if (!room.explored) return '\u00B7';
@@ -142,20 +157,6 @@ export function DungeonScreen() {
   };
 
   const isCurrentStairs = currentRoom.type === 'stairs';
-
-  const keyMap = useMemo(() => ({
-    w: () => { if (dungeonRef.current && playerRef.current) handleMove(0, -1); },
-    ArrowUp: () => { if (dungeonRef.current && playerRef.current) handleMove(0, -1); },
-    s: () => { if (dungeonRef.current && playerRef.current) handleMove(0, 1); },
-    ArrowDown: () => { if (dungeonRef.current && playerRef.current) handleMove(0, 1); },
-    a: () => { if (dungeonRef.current && playerRef.current) handleMove(-1, 0); },
-    ArrowLeft: () => { if (dungeonRef.current && playerRef.current) handleMove(-1, 0); },
-    d: () => { if (dungeonRef.current && playerRef.current) handleMove(1, 0); },
-    ArrowRight: () => { if (dungeonRef.current && playerRef.current) handleMove(1, 0); },
-    escape: () => setScreen('town'),
-  }), [dungeon]);
-
-  useKeyboard(keyMap);
 
   return (
     <div className="flex flex-col gap-4 animate-fade-in">
