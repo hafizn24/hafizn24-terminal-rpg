@@ -5,16 +5,7 @@ export const CLASSES: ClassDefinition[] = [
     id: 'warrior',
     name: 'Warrior',
     description: 'A mighty fighter with high HP and strength. Excels in close combat.',
-    ascii: `
-    +---+
-    ¦ ? ¦
-    ¦+-+¦
-    ¦¦¦¦¦
-    +---+
-     /¦\\
-    +---+
-    ¦ ? ¦
-    +---+`,
+    ascii: '[SWORD]',
     baseStats: {
       str: 14,
       dex: 10,
@@ -36,16 +27,7 @@ export const CLASSES: ClassDefinition[] = [
     id: 'mage',
     name: 'Mage',
     description: 'A wielder of arcane arts. High INT and MP for powerful spells.',
-    ascii: `
-    +---+
-    ¦ ? ¦
-    ¦+-+¦
-    ¦¦¦¦¦
-    +---+
-     /¦\\
-    +---+
-    ¦ ??¦
-    +---+`,
+    ascii: '[STAFF]',
     baseStats: {
       str: 6,
       dex: 8,
@@ -67,16 +49,7 @@ export const CLASSES: ClassDefinition[] = [
     id: 'rogue',
     name: 'Rogue',
     description: 'A swift shadow with high DEX. Lands critical hits frequently.',
-    ascii: `
-    +---+
-    ¦ ? ¦
-    ¦+-+¦
-    ¦¦¦¦¦
-    +---+
-     /¦\\
-    +---+
-    ¦ ?? ¦
-    +---+`,
+    ascii: '[BLADE]',
     baseStats: {
       str: 10,
       dex: 16,
@@ -98,16 +71,7 @@ export const CLASSES: ClassDefinition[] = [
     id: 'cleric',
     name: 'Cleric',
     description: 'A holy healer with balanced stats. Can restore HP in battle.',
-    ascii: `
-    +---+
-    ¦ + ¦
-    ¦+-+¦
-    ¦¦white¦¦
-    +---+
-     /white\\
-    +---+
-    ¦ ? ¦
-    +---+`,
+    ascii: '[SHIELD]',
     baseStats: {
       str: 10,
       dex: 8,

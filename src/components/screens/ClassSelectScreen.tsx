@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useGameStore } from '../../game/store/gameStore';
 import { CLASSES } from '../../game/data/classes';
 import { Button } from '../ui/Button';
-import { Panel } from '../ui/Panel';
 import { ProgressBar } from '../ui/ProgressBar';
 
 export function ClassSelectScreen() {
@@ -25,8 +24,22 @@ export function ClassSelectScreen() {
     }
   };
 
+  const classIcons: Record<string, string> = {
+    warrior: '[SWORD]',
+    mage: '[STAFF]',
+    rogue: '[BLADE]',
+    cleric: '[SHIELD]',
+  };
+
+  const classColors: Record<string, string> = {
+    warrior: 'text-terminal-red',
+    mage: 'text-terminal-cyan',
+    rogue: 'text-terminal-yellow',
+    cleric: 'text-terminal-green',
+  };
+
   return (
-    <div className="flex flex-col gap-6 animate-fade-in">
+    <div className="flex flex-col gap-6 animate-fade-in max-w-2xl mx-auto">
       <div className="text-center">
         <h1 className="text-terminal-cyan text-xl tracking-widest uppercase mb-2">
           Choose Your Class
@@ -36,57 +49,52 @@ export function ClassSelectScreen() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto w-full">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {CLASSES.map((cls) => (
-          <Panel
+          <button
             key={cls.id}
-            title={cls.name}
-            className={`cursor-pointer transition-all duration-200 ${
+            onClick={() => handleClassClick(cls.id)}
+            className={`text-left p-3 border transition-all duration-200 ${
               selectedClass === cls.id
-                ? 'border-terminal-cyan shadow-[0_0_10px_rgba(0,255,255,0.3)]'
-                : 'hover:border-terminal-green'
+                ? 'border-terminal-cyan bg-terminal-cyan/10'
+                : 'border-terminal-dim hover:border-terminal-green'
             }`}
           >
-            <button
-              onClick={() => handleClassClick(cls.id)}
-              className="w-full text-left"
-            >
-              <div className="flex gap-3">
-                <pre className="text-terminal-green text-[10px] leading-tight whitespace-pre">
-                  {cls.ascii}
-                </pre>
-                <div className="flex-1">
-                  <p className="text-terminal-dim text-xs mb-2">{cls.description}</p>
-                  <div className="space-y-1 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-terminal-dim">STR</span>
-                      <span className="text-terminal-red">{cls.baseStats.str}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-terminal-dim">DEX</span>
-                      <span className="text-terminal-yellow">{cls.baseStats.dex}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-terminal-dim">INT</span>
-                      <span className="text-terminal-cyan">{cls.baseStats.int}</span>
-                    </div>
-                    <ProgressBar
-                      current={cls.baseStats.hp}
-                      max={cls.baseStats.maxHp}
-                      label="HP"
-                      color="red"
-                    />
-                    <ProgressBar
-                      current={cls.baseStats.mp}
-                      max={cls.baseStats.maxMp}
-                      label="MP"
-                      color="cyan"
-                    />
-                  </div>
-                </div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className={`text-xs ${classColors[cls.id]}`}>
+                {classIcons[cls.id]}
+              </span>
+              <span className="text-terminal-green text-sm font-bold uppercase">
+                {cls.name}
+              </span>
+            </div>
+
+            <p className="text-terminal-dim text-xs mb-3 leading-relaxed">
+              {cls.description}
+            </p>
+
+            <div className="space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span className="text-terminal-dim">STR</span>
+                <span className="text-terminal-red">{cls.baseStats.str}</span>
               </div>
-            </button>
-          </Panel>
+              <div className="flex justify-between">
+                <span className="text-terminal-dim">DEX</span>
+                <span className="text-terminal-yellow">{cls.baseStats.dex}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-terminal-dim">INT</span>
+                <span className="text-terminal-cyan">{cls.baseStats.int}</span>
+              </div>
+              <ProgressBar current={cls.baseStats.hp} max={cls.baseStats.maxHp} label="HP" color="red" />
+              <ProgressBar current={cls.baseStats.mp} max={cls.baseStats.maxMp} label="MP" color="cyan" />
+            </div>
+
+            <div className="mt-2 pt-2 border-t border-terminal-dim/30">
+              <span className="text-terminal-dim text-[10px]">SKILL: </span>
+              <span className="text-terminal-green text-[10px]">{cls.skill.name}</span>
+            </div>
+          </button>
         ))}
       </div>
 
@@ -99,33 +107,34 @@ export function ClassSelectScreen() {
       )}
 
       {showNameInput && selected && (
-        <Panel title="Enter Your Name" className="max-w-md mx-auto w-full">
-          <div className="flex flex-col gap-3">
-            <div className="text-terminal-dim text-xs">
-              Playing as: <span className="text-terminal-cyan">{selected.name}</span>
-            </div>
-            <input
-              type="text"
-              value={playerName}
-              onChange={(e) => setPlayerName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleConfirm()}
-              placeholder="Enter name..."
-              maxLength={16}
-              autoFocus
-              className="bg-transparent border border-terminal-green px-3 py-2 text-terminal-green
-                         font-mono text-sm outline-none focus:border-terminal-cyan
-                         placeholder:text-terminal-dim"
-            />
-            <div className="flex gap-2 justify-end">
-              <Button variant="ghost" onClick={() => setShowNameInput(false)}>
-                Back
-              </Button>
-              <Button onClick={handleConfirm} disabled={!playerName.trim()}>
-                {'> Begin Adventure'}
-              </Button>
-            </div>
+        <div className="border border-terminal-green p-4 max-w-md mx-auto w-full">
+          <div className="text-terminal-cyan text-xs uppercase tracking-widest mb-3">
+            [ Enter Your Name ]
           </div>
-        </Panel>
+          <div className="text-terminal-dim text-xs mb-3">
+            Playing as: <span className="text-terminal-green">{selected.name}</span>
+          </div>
+          <input
+            type="text"
+            value={playerName}
+            onChange={(e) => setPlayerName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleConfirm()}
+            placeholder="Enter name..."
+            maxLength={16}
+            autoFocus
+            className="w-full bg-transparent border border-terminal-green px-3 py-2 text-terminal-green
+                       font-mono text-sm outline-none focus:border-terminal-cyan
+                       placeholder:text-terminal-dim mb-3"
+          />
+          <div className="flex gap-2 justify-end">
+            <Button variant="ghost" onClick={() => setShowNameInput(false)}>
+              Back
+            </Button>
+            <Button onClick={handleConfirm} disabled={!playerName.trim()}>
+              {'> Begin Adventure'}
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );
