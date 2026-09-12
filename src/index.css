@@ -1,0 +1,173 @@
+﻿@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #008f11 #0a0a0a;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: #0a0a0a;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: #008f11;
+    border-radius: 3px;
+  }
+
+  ::selection {
+    background: #00ff41;
+    color: #0a0a0a;
+  }
+
+  body {
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+}
+
+@layer components {
+  .terminal-border {
+    border: 1px solid #00ff41;
+    box-shadow: 0 0 5px rgba(0, 255, 65, 0.2), inset 0 0 5px rgba(0, 255, 65, 0.1);
+  }
+
+  .terminal-glow {
+    text-shadow: 0 0 5px #00ff41, 0 0 10px #00ff41;
+  }
+
+  .scanlines {
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.15) 0px,
+      rgba(0, 0, 0, 0.15) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    pointer-events: none;
+  }
+
+  .terminal-btn {
+    @apply px-4 py-2 border border-terminal-green text-terminal-green
+           hover:bg-terminal-green hover:text-terminal-bg
+           active:scale-95 transition-all duration-150
+           disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent
+           disabled:hover:text-terminal-green;
+  }
+}
+
+@layer utilities {
+  @keyframes floatUp {
+    0% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    50% {
+      opacity: 1;
+      transform: translateY(-20px) scale(1.2);
+    }
+    100% {
+      opacity: 0;
+      transform: translateY(-40px) scale(0.8);
+    }
+  }
+
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    10% { transform: translateX(-4px) rotate(-0.5deg); }
+    20% { transform: translateX(4px) rotate(0.5deg); }
+    30% { transform: translateX(-4px); }
+    40% { transform: translateX(4px); }
+    50% { transform: translateX(-2px); }
+    60% { transform: translateX(2px); }
+    70% { transform: translateX(-1px); }
+    80% { transform: translateX(1px); }
+    90% { transform: translateX(0); }
+  }
+
+  @keyframes flashRed {
+    0% { background-color: rgba(255, 0, 64, 0.3); }
+    100% { background-color: transparent; }
+  }
+
+  @keyframes flashGreen {
+    0% { background-color: rgba(0, 255, 65, 0.3); }
+    100% { background-color: transparent; }
+  }
+
+  @keyframes flashCyan {
+    0% { background-color: rgba(0, 255, 255, 0.3); }
+    100% { background-color: transparent; }
+  }
+
+  @keyframes slideUp {
+    0% { opacity: 0; transform: translateY(10px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes pulseBorder {
+    0%, 100% { border-color: #00ff41; }
+    50% { border-color: #00ffff; }
+  }
+
+  @keyframes typewriter {
+    from { width: 0; }
+    to { width: 100%; }
+  }
+
+  @keyframes blink-caret {
+    from, to { border-color: transparent; }
+    50% { border-color: #00ff41; }
+  }
+
+  @keyframes scanline {
+    0% { transform: translateY(-100%); }
+    100% { transform: translateY(100vh); }
+  }
+
+  .animate-float-up {
+    animation: floatUp 1s ease-out forwards;
+  }
+
+  .animate-shake {
+    animation: shake 0.3s ease-in-out;
+  }
+
+  .animate-flash-red {
+    animation: flashRed 0.3s ease-out;
+  }
+
+  .animate-flash-green {
+    animation: flashGreen 0.3s ease-out;
+  }
+
+  .animate-flash-cyan {
+    animation: flashCyan 0.3s ease-out;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.3s ease-out;
+  }
+
+  .animate-pulse-border {
+    animation: pulseBorder 2s ease-in-out infinite;
+  }
+
+  .scanline-sweep {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(0, 255, 65, 0.1), transparent);
+    animation: scanline 8s linear infinite;
+    pointer-events: none;
+    z-index: 100;
+  }
+}
