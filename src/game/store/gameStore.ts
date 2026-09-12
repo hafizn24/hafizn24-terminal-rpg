@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand';
+import { create } from 'zustand';
 import type { Player, DungeonState, Quest, Screen } from '../../types/game';
 import { saveGame, loadGame, hasSaveData, deleteSave } from '../../utils/storage';
 import { CLASSES } from '../../game/data/classes';
@@ -55,6 +55,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     };
 
     set({ player, currentScreen: 'town' });
+
+    // Persist to localStorage immediately so refresh preserves the save
+    const success = saveGame({ player, dungeon: null, quests: [], lastSave: new Date().toISOString() });
+    if (success) set({ hasSave: true });
   },
 
   updatePlayer: (updates) => {
@@ -72,7 +76,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   save: () => {
     const { player, dungeon, quests } = get();
     if (!player) return false;
-    return saveGame({ player, dungeon, quests, lastSave: new Date().toISOString() });
+    const success = saveGame({ player, dungeon, quests, lastSave: new Date().toISOString() });
+    if (success) set({ hasSave: true });
+    return success;
   },
 
   load: () => {
@@ -83,6 +89,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       dungeon: data.dungeon,
       quests: data.quests || [],
       currentScreen: data.dungeon ? 'dungeon' : 'town',
+      hasSave: true,
     });
     return true;
   },
@@ -95,6 +102,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       quests: [],
       currentScreen: 'classSelect',
       gameOverMessage: '',
+      hasSave: false,
     });
   },
 

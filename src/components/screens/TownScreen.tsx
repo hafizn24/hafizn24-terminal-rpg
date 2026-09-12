@@ -1,4 +1,4 @@
-﻿import { useGameStore } from '../../game/store/gameStore';
+import { useGameStore } from '../../game/store/gameStore';
 import { useUIStore } from '../../game/store/uiStore';
 import { Button } from '../ui/Button';
 import { Panel } from '../ui/Panel';
@@ -17,7 +17,12 @@ const TOWN_ART = `
 `;
 
 export function TownScreen() {
-  const { player, setScreen, save, dungeon } = useGameStore();
+  const player = useGameStore((s) => s.player);
+  const dungeon = useGameStore((s) => s.dungeon);
+  const setScreen = useGameStore((s) => s.setScreen);
+  const setDungeon = useGameStore((s) => s.setDungeon);
+  const save = useGameStore((s) => s.save);
+  const updatePlayer = useGameStore((s) => s.updatePlayer);
   const addLog = useUIStore((s) => s.addLog);
 
   if (!player) return null;
@@ -29,10 +34,9 @@ export function TownScreen() {
     addLog('Rested at the Inn. HP and MP fully restored. Game saved.', 'system');
   };
 
-  const updatePlayer = useGameStore((s) => s.updatePlayer);
-
   const handleEnterDungeon = () => {
     addLog(`Entering dungeon floor ${player.floor}...`, 'system');
+    setDungeon(null);
     setScreen('dungeon');
   };
 

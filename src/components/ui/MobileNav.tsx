@@ -1,4 +1,4 @@
-﻿import { Button } from '../ui/Button';
+import { Button } from '../ui/Button';
 
 interface MobileNavProps {
   onMove: (dx: number, dy: number) => void;

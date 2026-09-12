@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useGameStore } from '../../game/store/gameStore';
 import { Button } from '../ui/Button';
 

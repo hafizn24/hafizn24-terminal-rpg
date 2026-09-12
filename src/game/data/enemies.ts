@@ -1,4 +1,4 @@
-﻿import type { Enemy } from '../../types/game';
+import type { Enemy } from '../../types/game';
 
 export const ENEMIES: Enemy[] = [
   {

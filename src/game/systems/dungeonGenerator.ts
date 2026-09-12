@@ -1,4 +1,4 @@
-﻿import type { Room, RoomType, DungeonState, Enemy, Item } from '../../types/game';
+import type { Room, RoomType, DungeonState, Enemy, Item } from '../../types/game';
 import { ENEMIES, BOSS_ENEMIES } from '../data/enemies';
 import { ITEMS, SHOP_STOCK } from '../data/items';
 import { randomInt, pickRandom } from '../../utils/rng';

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import { useGameStore } from '../../game/store/gameStore';
 import { useUIStore } from '../../game/store/uiStore';
 import { Button } from '../ui/Button';
@@ -10,8 +10,14 @@ import { MobileNav } from '../ui/MobileNav';
 import type { Room } from '../../types/game';
 
 export function DungeonScreen() {
-  const { player, dungeon, setDungeon, setScreen, updatePlayer, setGameOver } = useGameStore();
+  const player = useGameStore((s) => s.player);
+  const dungeon = useGameStore((s) => s.dungeon);
+  const setDungeon = useGameStore((s) => s.setDungeon);
+  const setScreen = useGameStore((s) => s.setScreen);
+  const updatePlayer = useGameStore((s) => s.updatePlayer);
+  const setGameOver = useGameStore((s) => s.setGameOver);
   const addLog = useUIStore((s) => s.addLog);
+
   const dungeonRef = useRef(dungeon);
   dungeonRef.current = dungeon;
   const playerRef = useRef(player);
@@ -33,6 +39,7 @@ export function DungeonScreen() {
   const handleMove = (dx: number, dy: number) => {
     const d = dungeonRef.current!;
     const p = playerRef.current!;
+    if (!d || !p) return;
     const newX = d.playerPos.x + dx;
     const newY = d.playerPos.y + dy;
     if (newX < 0 || newX >= d.gridSize || newY < 0 || newY >= d.gridSize) return;
@@ -95,11 +102,13 @@ export function DungeonScreen() {
 
   const handleDescend = () => {
     const p = playerRef.current!;
+    if (!p) return;
     const nextFloor = p.floor + 1;
     updatePlayer({ floor: nextFloor });
     const newDungeon = generateDungeon(nextFloor);
     setDungeon(newDungeon);
     addLog(`Descended to floor ${nextFloor}.`, 'system');
+    useGameStore.getState().updateQuestProgress('floor', 'any');
   };
 
   const roomTypeSymbol = (room: Room) => {
@@ -134,17 +143,19 @@ export function DungeonScreen() {
 
   const isCurrentStairs = currentRoom.type === 'stairs';
 
-  useKeyboard({
-    w: () => { if (adjacentRooms.up) handleMove(0, -1); },
-    ArrowUp: () => { if (adjacentRooms.up) handleMove(0, -1); },
-    s: () => { if (adjacentRooms.down) handleMove(0, 1); },
-    ArrowDown: () => { if (adjacentRooms.down) handleMove(0, 1); },
-    a: () => { if (adjacentRooms.left) handleMove(-1, 0); },
-    ArrowLeft: () => { if (adjacentRooms.left) handleMove(-1, 0); },
-    d: () => { if (adjacentRooms.right) handleMove(1, 0); },
-    ArrowRight: () => { if (adjacentRooms.right) handleMove(1, 0); },
+  const keyMap = useMemo(() => ({
+    w: () => { if (dungeonRef.current && playerRef.current) handleMove(0, -1); },
+    ArrowUp: () => { if (dungeonRef.current && playerRef.current) handleMove(0, -1); },
+    s: () => { if (dungeonRef.current && playerRef.current) handleMove(0, 1); },
+    ArrowDown: () => { if (dungeonRef.current && playerRef.current) handleMove(0, 1); },
+    a: () => { if (dungeonRef.current && playerRef.current) handleMove(-1, 0); },
+    ArrowLeft: () => { if (dungeonRef.current && playerRef.current) handleMove(-1, 0); },
+    d: () => { if (dungeonRef.current && playerRef.current) handleMove(1, 0); },
+    ArrowRight: () => { if (dungeonRef.current && playerRef.current) handleMove(1, 0); },
     escape: () => setScreen('town'),
-  });
+  }), [dungeon]);
+
+  useKeyboard(keyMap);
 
   return (
     <div className="flex flex-col gap-4 animate-fade-in">
@@ -165,7 +176,7 @@ export function DungeonScreen() {
                 {row.map((room, x) => (
                   <div
                     key={`${x}-${y}`}
-                    className={`w-6 h-6 flex items-center justify-center text-xs border border-terminal-dim/30
+                    className={`w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center text-[10px] sm:text-xs border border-terminal-dim/30
                       ${roomColor(room)} ${
                       room.x === dungeon.playerPos.x && room.y === dungeon.playerPos.y
                         ? 'bg-terminal-cyan/20 border-terminal-cyan'
