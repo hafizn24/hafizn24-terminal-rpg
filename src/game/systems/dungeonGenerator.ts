@@ -5,6 +5,20 @@ import { randomInt, pickRandom, chance } from '../../utils/rng';
 
 const GRID_SIZE = 5;
 
+// Shop balance: at most 0-1 shops per floor (30% chance), with a pity
+// timer that forces 1 shop if 3 consecutive floors spawned without one.
+const SHOP_SPAWN_CHANCE = 0.3;
+const SHOP_PITY_FLOORS = 3;
+let consecutiveFloorsWithoutShop = 0;
+
+export function resetShopPity(): void {
+  consecutiveFloorsWithoutShop = 0;
+}
+
+export function getShopPity(): number {
+  return consecutiveFloorsWithoutShop;
+}
+
 export function generateDungeon(floor: number): DungeonState {
   const rooms: Room[][] = [];
 
@@ -24,7 +38,8 @@ export function generateDungeon(floor: number): DungeonState {
   rooms[0][0].explored = true;
 
   const isBossFloor = floor % 5 === 0;
-  const roomTypes: RoomType[] = ['monster', 'monster', 'treasure', 'trap', 'shop', 'empty', 'empty'];
+  // Shops are placed separately (0-1 per floor) so they don't flood the map.
+  const roomTypes: RoomType[] = ['monster', 'monster', 'treasure', 'trap', 'empty', 'empty'];
 
   // Stairs always exist so the player can descend; on boss floors the boss
   // guards the room right before the stairs.
@@ -54,7 +69,19 @@ export function generateDungeon(floor: number): DungeonState {
     }
   }
   if (empties.length > 0) {
-    pickRandom(empties).type = 'shrine';
+    const shrineRoom = pickRandom(empties);
+    shrineRoom.type = 'shrine';
+    empties.splice(empties.indexOf(shrineRoom), 1);
+  }
+
+  // Place 0-1 shops per floor: 30% chance, or force one if pity kicks in.
+  const shouldPlaceShop =
+    consecutiveFloorsWithoutShop >= SHOP_PITY_FLOORS || chance(SHOP_SPAWN_CHANCE);
+  if (shouldPlaceShop && empties.length > 0) {
+    pickRandom(empties).type = 'shop';
+    consecutiveFloorsWithoutShop = 0;
+  } else {
+    consecutiveFloorsWithoutShop += 1;
   }
 
   for (let y = 0; y < GRID_SIZE; y++) {

@@ -6,6 +6,7 @@ interface UIStore {
   nextLogId: number;
 
   addLog: (text: string, type?: LogMessage['type']) => void;
+  clearLogs: () => void;
 }
 
 export const useUIStore = create<UIStore>((set) => ({
@@ -20,4 +21,6 @@ export const useUIStore = create<UIStore>((set) => ({
       ],
       nextLogId: state.nextLogId + 1,
     })),
+
+  clearLogs: () => set({ logMessages: [] }),
 }));
