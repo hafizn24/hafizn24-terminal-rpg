@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useGameStore } from '../../game/store/gameStore';
 import { useUIStore } from '../../game/store/uiStore';
 import { Button } from '../ui/Button';
@@ -32,14 +32,15 @@ export function QuestBoardScreen() {
     }
   }, [quests]);
 
+  const playerFloor = player?.floor ?? 1;
+  const availableQuests = useMemo(() => generateSideQuests(playerFloor), [playerFloor]);
+
   if (!player) return null;
 
   const activeQuests = quests.filter((q) => !q.completed);
 
-  const availableQuests = generateSideQuests(player.floor);
-
   const handleAccept = (quest: typeof quests[0]) => {
-    if (quests.find((q) => q.id === quest.id)) return;
+    if (quests.find((q) => q.name === quest.name)) return;
     setQuests([...quests, quest]);
     addLog(`Accepted quest: ${quest.name}`, 'system');
   };
@@ -48,14 +49,9 @@ export function QuestBoardScreen() {
     const quest = quests.find((q) => q.id === questId);
     if (!quest || !quest.completed) return;
 
-    const newStats = { ...player.stats };
-    newStats.hp = newStats.maxHp;
-    newStats.mp = newStats.maxMp;
-
     updatePlayer({
       gold: player.gold + quest.reward.gold,
       exp: player.exp + quest.reward.exp,
-      stats: newStats,
     });
 
     setQuests(quests.filter((q) => q.id !== questId));
@@ -133,7 +129,7 @@ export function QuestBoardScreen() {
         <Panel title="Available Quests">
           <div className="space-y-3">
             {availableQuests.map((quest) => {
-              const alreadyAccepted = quests.find((q) => q.id === quest.id);
+              const alreadyAccepted = quests.find((q) => q.name === quest.name);
               return (
                 <div key={quest.id} className="border-b border-terminal-dim/30 pb-2">
                   <div className="flex items-center justify-between mb-1">

@@ -4,7 +4,7 @@ import { useUIStore } from '../../game/store/uiStore';
 import { Button } from '../ui/Button';
 import { Panel } from '../ui/Panel';
 import { ProgressBar } from '../ui/ProgressBar';
-import { calcDamage, calcCritChance, chance, pickRandom } from '../../utils/rng';
+import { calcDamage, calcCritChance, calcExpForLevel, chance, pickRandom } from '../../utils/rng';
 import { ITEMS } from '../../game/data/items';
 import { CLASSES } from '../../game/data/classes';
 import type { Enemy } from '../../types/game';
@@ -84,17 +84,6 @@ export function CombatScreen() {
   };
 
 
-  const keyMap = useMemo(() => ({
-    '1': handleAttack,
-    Enter: handleAttack,
-    '2': handleSkill,
-    '3': handleItem,
-    '4': handleRun,
-    Escape: handleRun,
-  }), [state.isPlayerTurn, state.isOver, state.enemyHp]);
-
-  useKeyboard(keyMap);
-
   if (!player || !enemyRef.current) return <div className="text-terminal-dim">No enemy...</div>;
   const enemy = enemyRef.current;
 
@@ -109,10 +98,10 @@ export function CombatScreen() {
       let dmg: number;
       let logMsg: string;
 
-      if (enemy.skills.length > 0 && chance(0.35)) {
-        const skill = pickRandom(enemy.skills);
-        dmg = calcDamage(Math.floor(enemy.attack * skill.power), getPlayerDef());
-        logMsg = `${enemy.name} uses ${skill.name}! ${dmg} damage!`;
+      const rolledSkill = enemy.skills.length > 0 ? pickRandom(enemy.skills) : null;
+      if (rolledSkill && chance(rolledSkill.chance)) {
+        dmg = calcDamage(Math.floor(enemy.attack * rolledSkill.power), getPlayerDef());
+        logMsg = `${enemy.name} uses ${rolledSkill.name}! ${dmg} damage!`;
       } else {
         dmg = calcDamage(enemy.attack, getPlayerDef());
         logMsg = `${enemy.name} attacks for ${dmg} damage.`;
@@ -222,6 +211,15 @@ export function CombatScreen() {
       return;
     }
 
+    if (potion.item.healAmount && p.stats.hp >= p.stats.maxHp) {
+      setState((s) => ({ ...s, combatLog: [...s.combatLog, 'HP already full! Potion not used.'] }));
+      return;
+    }
+    if (potion.item.mpRestoreAmount && !potion.item.healAmount && p.stats.mp >= p.stats.maxMp) {
+      setState((s) => ({ ...s, combatLog: [...s.combatLog, 'MP already full! Potion not used.'] }));
+      return;
+    }
+
     const newStats = { ...p.stats };
     let logMsg = '';
 
@@ -271,24 +269,25 @@ export function CombatScreen() {
     let newLevel = p.level;
     const newStats = { ...p.stats };
 
-    const newInv = [...p.inventory];
+    let newInv = [...p.inventory];
     enemy.lootTable.forEach((loot) => {
       if (chance(loot.chance)) {
         const item = ITEMS[loot.itemId];
         if (item) {
-          const existing = newInv.find((s) => s.item.id === item.id);
-          if (existing) {
-            existing.quantity += loot.quantity;
+          const idx = newInv.findIndex((s) => s.item.id === item.id);
+          if (idx >= 0) {
+            newInv = newInv.map((s, i) => (i === idx ? { ...s, quantity: s.quantity + loot.quantity } : s));
           } else {
-            newInv.push({ item, quantity: loot.quantity });
+            newInv = [...newInv, { item, quantity: loot.quantity }];
           }
           addLog(`Loot: ${item.name} x${loot.quantity}`, 'loot');
         }
       }
     });
 
-    while (newExp >= p.expToNext) {
-      newExp -= p.expToNext;
+    let threshold = p.expToNext;
+    while (newExp >= threshold) {
+      newExp -= threshold;
       newLevel++;
       const classDef = CLASSES.find((c) => c.id === p.class);
       if (classDef) {
@@ -300,19 +299,21 @@ export function CombatScreen() {
         newStats.hp = newStats.maxHp;
         newStats.mp = newStats.maxMp;
       }
+      threshold = calcExpForLevel(newLevel);
       addLog(`LEVEL UP! Now level ${newLevel}!`, 'loot');
     }
 
     updatePlayer({
       level: newLevel,
       exp: newExp,
-      expToNext: Math.floor(50 * Math.pow(newLevel, 1.5)),
+      expToNext: threshold,
       stats: newStats,
       gold: p.gold + goldGain,
       inventory: newInv,
     });
 
     useGameStore.getState().updateQuestProgress('kill', enemy.id);
+    useGameStore.getState().updateQuestProgress('gold', 'any', p.gold + goldGain);
 
     if (dungeon) {
       const newRooms = dungeon.rooms.map((row) =>
@@ -338,6 +339,17 @@ export function CombatScreen() {
     setTimeout(() => setScreen('dungeon'), 1500);
   };
 
+  const keyMap = useMemo(() => ({
+    '1': handleAttack,
+    Enter: handleAttack,
+    '2': handleSkill,
+    '3': handleItem,
+    '4': handleRun,
+    Escape: handleRun,
+  }), [state.isPlayerTurn, state.isOver, state.enemyHp]);
+
+  useKeyboard(keyMap);
+
   return (
     <div className={`flex flex-col gap-4 animate-fade-in max-w-2xl mx-auto ${state.shaking ? 'animate-[shake_0.3s_ease-in-out]' : ''}`}>
       <h1 className="text-terminal-red text-lg tracking-widest uppercase text-center">
@@ -354,7 +366,7 @@ export function CombatScreen() {
 
         <Panel title={player.name} className="flex-1">
           <div className="text-xs text-terminal-dim mb-2 text-center uppercase">
-            {player.class} — Level {player.level}
+            {player.class} - Level {player.level}
           </div>
           <div className="space-y-1">
             <ProgressBar current={player.stats.hp} max={player.stats.maxHp} label="HP" color="red" />

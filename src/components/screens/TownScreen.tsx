@@ -21,6 +21,7 @@ export function TownScreen() {
   const dungeon = useGameStore((s) => s.dungeon);
   const setScreen = useGameStore((s) => s.setScreen);
   const setDungeon = useGameStore((s) => s.setDungeon);
+  const setSelectedShop = useGameStore((s) => s.setSelectedShop);
   const save = useGameStore((s) => s.save);
   const updatePlayer = useGameStore((s) => s.updatePlayer);
   const addLog = useUIStore((s) => s.addLog);
@@ -54,11 +55,14 @@ export function TownScreen() {
       </p>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full max-w-lg">
-        <Button onClick={() => setScreen('shop')}>
+        <Button onClick={() => { setSelectedShop('blacksmith'); setScreen('shop'); }}>
           {'[BSM] Blacksmith'}
         </Button>
-        <Button onClick={() => setScreen('shop')}>
+        <Button onClick={() => { setSelectedShop('potion_shop'); setScreen('shop'); }}>
           {'[POT] Potions'}
+        </Button>
+        <Button onClick={() => { setSelectedShop('magic_shop'); setScreen('shop'); }}>
+          {'[MAG] Magic Shop'}
         </Button>
         <Button onClick={() => setScreen('inventory')}>
           {'[INV] Inventory'}

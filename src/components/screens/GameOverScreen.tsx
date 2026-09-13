@@ -10,10 +10,10 @@ export function GameOverScreen() {
       <pre className="text-terminal-red text-sm leading-tight">
 {`
  +---------------------------+
- ¦                           ¦
- ¦     G  A  M  E           ¦
- ¦     O  V  E  R           ¦
- ¦                           ¦
+ |                           |
+ |     G  A  M  E           |
+ |     O  V  E  R           |
+ |                           |
  +---------------------------+
 `}
       </pre>
