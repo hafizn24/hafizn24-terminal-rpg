@@ -14,7 +14,7 @@ const TITLE_ART = `
 const SUBTITLE = 'A Terminal-Based Adventure';
 
 export function TitleScreen() {
-  const { load, hasSave, checkSave } = useGameStore();
+  const { load, hasSave, checkSave, stats } = useGameStore();
   const [showArt, setShowArt] = useState(false);
   const [typedText, setTypedText] = useState('');
   const [showButtons, setShowButtons] = useState(false);
@@ -41,6 +41,10 @@ export function TitleScreen() {
   }, [showArt]);
 
   const handleNewGame = () => {
+    if (hasSave) {
+      const ok = window.confirm('Start a new game? Your saved run will be deleted.');
+      if (!ok) return;
+    }
     useGameStore.getState().newGame();
   };
 
@@ -63,6 +67,12 @@ export function TitleScreen() {
         <span className="animate-blink">_</span>
       </div>
 
+      {stats.bestFloor > 1 && (
+        <div className="text-terminal-yellow text-xs tracking-widest">
+          BEST: FLOOR {stats.bestFloor} • BOSSES: {stats.bossesKilled}
+        </div>
+      )}
+
       {showButtons && (
         <div className="flex flex-col gap-3 w-64 animate-slide-up">
           <Button size="lg" glow onClick={handleNewGame}>
@@ -77,9 +87,9 @@ export function TitleScreen() {
       )}
 
       {showButtons && (
-        <div className="text-terminal-dim text-xs mt-8 animate-fade-in">
-          <p>WASD to navigate. Click to interact.</p>
-          <p className="mt-1">v0.1.0 — Built with React</p>
+        <div className="text-terminal-dim text-xs mt-8 animate-fade-in text-center">
+          <p>Dungeon: WASD/Arrows or tap • Combat: 1-4 + G guard • E descends stairs</p>
+          <p className="mt-1">Rest at the Inn to save. Shrines heal once. Elites drop bonus loot.</p>
         </div>
       )}
     </div>

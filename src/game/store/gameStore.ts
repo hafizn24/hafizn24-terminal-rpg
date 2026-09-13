@@ -1,11 +1,13 @@
 import { create } from 'zustand';
-import type { Player, DungeonState, Quest, Screen } from '../../types/game';
-import { saveGame, loadGame, hasSaveData, deleteSave } from '../../utils/storage';
+import type { Player, DungeonState, Quest, Screen, GameStats } from '../../types/game';
+import { saveGame, loadGame, hasSaveData, deleteSave, DEFAULT_STATS } from '../../utils/storage';
 import { CLASSES } from '../../game/data/classes';
 import { ITEMS } from '../../game/data/items';
 import { checkQuestProgress, isQuestComplete } from '../../game/systems/questSystem';
+import { calcExpForLevel } from '../../utils/rng';
 
-type ShopType = 'blacksmith' | 'potion_shop' | 'magic_shop';
+export type ShopType = 'blacksmith' | 'potion_shop' | 'magic_shop';
+export type ShopReturn = 'town' | 'dungeon';
 
 interface GameStore {
   currentScreen: Screen;
@@ -15,9 +17,12 @@ interface GameStore {
   gameOverMessage: string;
   hasSave: boolean;
   selectedShop: ShopType;
+  shopReturn: ShopReturn;
+  lastSave: string;
+  stats: GameStats;
 
   setScreen: (screen: Screen) => void;
-  setSelectedShop: (shop: ShopType) => void;
+  setSelectedShop: (shop: ShopType, ret?: ShopReturn) => void;
   createPlayer: (name: string, classId: string) => void;
   updatePlayer: (updates: Partial<Player>) => void;
   setDungeon: (dungeon: DungeonState | null) => void;
@@ -28,6 +33,8 @@ interface GameStore {
   newGame: () => void;
   checkSave: () => void;
   updateQuestProgress: (eventType: string, target: string, value?: number) => void;
+  addItem: (itemId: string, quantity?: number) => void;
+  gainExp: (amount: number) => string[];
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -38,10 +45,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
   gameOverMessage: '',
   hasSave: false,
   selectedShop: 'blacksmith' as ShopType,
+  shopReturn: 'town' as ShopReturn,
+  lastSave: '',
+  stats: { ...DEFAULT_STATS },
 
   setScreen: (screen) => set({ currentScreen: screen }),
 
-  setSelectedShop: (shop) => set({ selectedShop: shop }),
+  setSelectedShop: (shop, ret) =>
+    set((s) => ({ selectedShop: shop, shopReturn: ret ?? s.shopReturn })),
 
   createPlayer: (name, classId) => {
     const classDef = CLASSES.find((c) => c.id === classId);
@@ -62,11 +73,24 @@ export const useGameStore = create<GameStore>((set, get) => ({
       floor: 1,
     };
 
-    set({ player, currentScreen: 'town' });
+    const stats: GameStats = {
+      bestFloor: 1,
+      bossesKilled: 0,
+      runsStarted: get().stats.runsStarted + 1,
+    };
+
+    set({ player, stats, currentScreen: 'town' });
 
     // Persist to localStorage immediately so refresh preserves the save
-    const success = saveGame({ player, dungeon: null, quests: [], lastSave: new Date().toISOString() });
-    if (success) set({ hasSave: true });
+    const success = saveGame({
+      version: 1,
+      player,
+      dungeon: null,
+      quests: [],
+      lastSave: new Date().toISOString(),
+      stats,
+    });
+    if (success) set({ hasSave: true, lastSave: new Date().toISOString() });
   },
 
   updatePlayer: (updates) => {
@@ -82,10 +106,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setGameOver: (message) => set({ gameOverMessage: message, currentScreen: 'gameOver' }),
 
   save: () => {
-    const { player, dungeon, quests } = get();
+    const { player, dungeon, quests, stats } = get();
     if (!player) return false;
-    const success = saveGame({ player, dungeon, quests, lastSave: new Date().toISOString() });
-    if (success) set({ hasSave: true });
+    const lastSave = new Date().toISOString();
+    const success = saveGame({ version: 1, player, dungeon, quests, lastSave, stats });
+    if (success) set({ hasSave: true, lastSave });
     return success;
   },
 
@@ -98,13 +123,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
       quests: data.quests || [],
       currentScreen: data.dungeon ? 'dungeon' : 'town',
       hasSave: true,
+      lastSave: data.lastSave,
+      stats: data.stats,
     });
     return true;
   },
 
   newGame: () => {
     deleteSave();
-    set({
+    set((s) => ({
       player: null,
       dungeon: null,
       quests: [],
@@ -112,11 +139,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
       gameOverMessage: '',
       hasSave: false,
       selectedShop: 'blacksmith',
-    });
+      shopReturn: 'town' as ShopReturn,
+      lastSave: '',
+      stats: s.stats,
+    }));
   },
 
   checkSave: () => {
     set({ hasSave: hasSaveData() });
+    const data = loadGame();
+    if (data) set({ lastSave: data.lastSave, stats: data.stats });
   },
 
   updateQuestProgress: (eventType, target, value) => {
@@ -136,5 +168,48 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return { ...q, progress: newProgress, completed };
     });
     set({ quests: updated });
+  },
+
+  addItem: (itemId, quantity = 1) => {
+    const { player } = get();
+    if (!player) return;
+    const item = ITEMS[itemId];
+    if (!item) return;
+    const idx = player.inventory.findIndex((s) => s.item.id === itemId);
+    const inventory =
+      idx >= 0
+        ? player.inventory.map((s, i) => (i === idx ? { ...s, quantity: s.quantity + quantity } : s))
+        : [...player.inventory, { item, quantity }];
+    set({ player: { ...player, inventory } });
+  },
+
+  gainExp: (amount) => {
+    const { player } = get();
+    if (!player) return [];
+    const messages: string[] = [];
+    let newExp = player.exp + amount;
+    let newLevel = player.level;
+    const newStats = { ...player.stats };
+    let threshold = player.expToNext;
+
+    while (newExp >= threshold) {
+      newExp -= threshold;
+      newLevel++;
+      const classDef = CLASSES.find((c) => c.id === player.class);
+      if (classDef) {
+        newStats.str += classDef.growth.str;
+        newStats.dex += classDef.growth.dex;
+        newStats.int += classDef.growth.int;
+        newStats.maxHp += classDef.growth.hp;
+        newStats.maxMp += classDef.growth.mp;
+        newStats.hp = newStats.maxHp;
+        newStats.mp = newStats.maxMp;
+      }
+      threshold = calcExpForLevel(newLevel);
+      messages.push(`LEVEL UP! Now level ${newLevel}!`);
+    }
+
+    set({ player: { ...player, level: newLevel, exp: newExp, expToNext: threshold, stats: newStats } });
+    return messages;
   },
 }));

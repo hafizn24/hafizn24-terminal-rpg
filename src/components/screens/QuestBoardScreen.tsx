@@ -6,42 +6,48 @@ import { Panel } from '../ui/Panel';
 import { ProgressBar } from '../ui/ProgressBar';
 import { generateDailyQuests, generateSideQuests, checkDailyReset } from '../../game/systems/questSystem';
 
+const DAILY_RESET_KEY = 'terminal_rpg_daily_reset';
+
 export function QuestBoardScreen() {
   const { player, quests, setQuests, updatePlayer, setScreen } = useGameStore();
   const addLog = useUIStore((s) => s.addLog);
   const [tab, setTab] = useState<'active' | 'available'>('active');
 
   useEffect(() => {
-    const stored = localStorage.getItem('terminal_rpg_quests');
-    const storedDate = localStorage.getItem('terminal_rpg_daily_reset');
+    const storedDate = localStorage.getItem(DAILY_RESET_KEY);
+    const storeQuests = useGameStore.getState().quests;
 
     if (checkDailyReset(storedDate || '')) {
       const newDaily = generateDailyQuests();
-      const existing = stored ? JSON.parse(stored) : [];
-      const nonDaily = existing.filter((q: { type: string }) => q.type !== 'daily');
-      setQuests([...nonDaily, ...newDaily]);
-      localStorage.setItem('terminal_rpg_daily_reset', new Date().toISOString());
-    } else if (stored && quests.length === 0) {
-      setQuests(JSON.parse(stored));
+      const nonDaily = storeQuests.filter((q) => q.type !== 'daily');
+      // Merge by id so progress on side quests is preserved across daily resets.
+      const merged = [...nonDaily];
+      newDaily.forEach((dq) => {
+        if (!merged.find((q) => q.id === dq.id)) merged.push(dq);
+      });
+      setQuests(merged);
+      localStorage.setItem(DAILY_RESET_KEY, new Date().toISOString());
+      useGameStore.getState().save();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (quests.length > 0) {
-      localStorage.setItem('terminal_rpg_quests', JSON.stringify(quests));
-    }
-  }, [quests]);
-
   const playerFloor = player?.floor ?? 1;
-  const availableQuests = useMemo(() => generateSideQuests(playerFloor), [playerFloor]);
+  // Stable side-quest offers: memoize once per mount so the list doesn't
+  // regenerate on every floor change and invalidate Accept buttons.
+  const availableQuests = useMemo(() => generateSideQuests(playerFloor), []);
 
   if (!player) return null;
 
-  const activeQuests = quests.filter((q) => !q.completed);
+  // Show completed-but-unclaimed quests with a Claim button (previously
+  // `!completed` filtered them out, making Claim unreachable).
+  const activeQuests = quests;
+  const claimableCount = quests.filter((q) => q.completed).length;
 
   const handleAccept = (quest: typeof quests[0]) => {
-    if (quests.find((q) => q.name === quest.name)) return;
-    setQuests([...quests, quest]);
+    if (quests.find((q) => q.id === quest.id)) return;
+    setQuests([...quests, { ...quest, progress: 0, completed: false }]);
+    useGameStore.getState().save();
     addLog(`Accepted quest: ${quest.name}`, 'system');
   };
 
@@ -49,12 +55,17 @@ export function QuestBoardScreen() {
     const quest = quests.find((q) => q.id === questId);
     if (!quest || !quest.completed) return;
 
-    updatePlayer({
-      gold: player.gold + quest.reward.gold,
-      exp: player.exp + quest.reward.exp,
-    });
+    updatePlayer({ gold: player.gold + quest.reward.gold });
+    const levelMsgs = useGameStore.getState().gainExp(quest.reward.exp);
+    levelMsgs.forEach((m) => addLog(m, 'loot'));
+
+    if (quest.reward.itemId) {
+      useGameStore.getState().addItem(quest.reward.itemId, 1);
+      addLog(`Quest item reward: ${quest.reward.itemId.replace(/_/g, ' ')}!`, 'loot');
+    }
 
     setQuests(quests.filter((q) => q.id !== questId));
+    useGameStore.getState().save();
     addLog(`Claimed rewards: ${quest.reward.gold} gold, ${quest.reward.exp} EXP!`, 'loot');
   };
 
@@ -75,7 +86,7 @@ export function QuestBoardScreen() {
           variant={tab === 'active' ? 'primary' : 'ghost'}
           onClick={() => setTab('active')}
         >
-          Active ({activeQuests.length})
+          Active ({activeQuests.length}{claimableCount > 0 ? `, ${claimableCount} ready` : ''})
         </Button>
         <Button
           size="sm"
@@ -98,7 +109,9 @@ export function QuestBoardScreen() {
                 <div key={quest.id} className="border-b border-terminal-dim/30 pb-2">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-terminal-yellow text-sm">{quest.name}</span>
-                    <span className="text-terminal-dim text-[10px] uppercase">{quest.type}</span>
+                    <span className="text-terminal-dim text-[10px] uppercase">
+                      {quest.type}{quest.completed ? ' • READY' : ''}
+                    </span>
                   </div>
                   <div className="text-terminal-dim text-xs mb-2">{quest.description}</div>
                   <ProgressBar
@@ -111,9 +124,10 @@ export function QuestBoardScreen() {
                   <div className="flex items-center justify-between mt-1">
                     <div className="text-terminal-dim text-[10px]">
                       Reward: {quest.reward.gold}g, {quest.reward.exp} EXP
+                      {quest.reward.itemId ? `, ${quest.reward.itemId.replace(/_/g, ' ')}` : ''}
                     </div>
                     {quest.completed && (
-                      <Button size="sm" onClick={() => handleClaim(quest.id)}>
+                      <Button size="sm" onClick={() => handleClaim(quest.id)} glow>
                         Claim
                       </Button>
                     )}
@@ -129,7 +143,7 @@ export function QuestBoardScreen() {
         <Panel title="Available Quests">
           <div className="space-y-3">
             {availableQuests.map((quest) => {
-              const alreadyAccepted = quests.find((q) => q.name === quest.name);
+              const alreadyAccepted = quests.find((q) => q.id === quest.id);
               return (
                 <div key={quest.id} className="border-b border-terminal-dim/30 pb-2">
                   <div className="flex items-center justify-between mb-1">

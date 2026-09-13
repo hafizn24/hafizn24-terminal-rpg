@@ -171,3 +171,17 @@
     z-index: 100;
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .scanline-sweep,
+  .animate-pulse-glow,
+  .animate-pulse-border,
+  .animate-shake,
+  .animate-float-up,
+  .animate-slide-up {
+    animation: none !important;
+  }
+  * {
+    scroll-behavior: auto !important;
+  }
+}

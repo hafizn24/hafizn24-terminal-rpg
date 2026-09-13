@@ -12,7 +12,6 @@ import { QuestBoardScreen } from './QuestBoardScreen';
 const screenMap: Record<string, React.FC> = {
   title: TitleScreen,
   classSelect: ClassSelectScreen,
-  nameInput: ClassSelectScreen,
   town: TownScreen,
   dungeon: DungeonScreen,
   combat: CombatScreen,

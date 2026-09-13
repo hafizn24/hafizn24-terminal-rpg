@@ -3,7 +3,6 @@ export type CharacterClass = 'warrior' | 'mage' | 'rogue' | 'cleric';
 export type Screen =
   | 'title'
   | 'classSelect'
-  | 'nameInput'
   | 'town'
   | 'dungeon'
   | 'combat'
@@ -24,6 +23,8 @@ export type RoomType =
   | 'shop'
   | 'stairs'
   | 'boss'
+  | 'elite'
+  | 'shrine'
   | 'start';
 
 export type StatType = 'str' | 'dex' | 'int' | 'hp' | 'mp';
@@ -63,6 +64,8 @@ export interface Item {
   statBonus?: Partial<Record<StatType, number>>;
   healAmount?: number;
   mpRestoreAmount?: number;
+  effect?: 'bomb' | 'smoke';
+  effectPower?: number;
   ascii?: string;
 }
 
@@ -101,12 +104,18 @@ export interface Enemy {
   goldReward: number;
   lootTable: LootEntry[];
   skills: EnemySkill[];
+  isElite?: boolean;
 }
 
 export interface EnemySkill {
   name: string;
   power: number;
   chance: number;
+  status?: {
+    id: 'burn' | 'poison';
+    dmg: number;
+    turns: number;
+  };
 }
 
 export interface LootEntry {
@@ -120,7 +129,6 @@ export interface Room {
   explored: boolean;
   x: number;
   y: number;
-  connected: number[];
   enemy?: Enemy;
   item?: Item;
   trapDamage?: number;
@@ -151,6 +159,12 @@ export interface Quest {
     itemId?: string;
   };
   completed: boolean;
+}
+
+export interface GameStats {
+  bestFloor: number;
+  bossesKilled: number;
+  runsStarted: number;
 }
 
 export interface GameState {

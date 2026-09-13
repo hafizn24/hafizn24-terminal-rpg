@@ -18,7 +18,7 @@ export function LogPanel() {
   }, [logMessages]);
 
   return (
-    <div className="border border-terminal-dim bg-terminal-panel p-2 max-h-32 overflow-y-auto text-xs font-mono">
+    <div className="border border-terminal-dim bg-terminal-panel p-2 max-h-32 overflow-y-auto text-xs font-mono" aria-live="polite">
       {logMessages.length === 0 && (
         <div className="text-terminal-dim italic">No events yet...</div>
       )}
