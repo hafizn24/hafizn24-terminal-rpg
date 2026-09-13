@@ -25,12 +25,13 @@ export function generateDungeon(floor: number): DungeonState {
   rooms[0][0].explored = true;
 
   const isBossFloor = floor % 5 === 0;
-  const roomTypes: RoomType[] = ['monster', 'monster', 'treasure', 'trap', 'empty', 'empty'];
+  const roomTypes: RoomType[] = ['monster', 'monster', 'treasure', 'trap', 'shop', 'empty', 'empty'];
 
+  // Stairs always exist so the player can descend; on boss floors the boss
+  // guards the room right before the stairs.
+  rooms[GRID_SIZE - 1][GRID_SIZE - 1].type = 'stairs';
   if (isBossFloor) {
-    rooms[GRID_SIZE - 1][GRID_SIZE - 1].type = 'boss';
-  } else {
-    rooms[GRID_SIZE - 1][GRID_SIZE - 1].type = 'stairs';
+    rooms[GRID_SIZE - 1][GRID_SIZE - 2].type = 'boss';
   }
 
   for (let y = 0; y < GRID_SIZE; y++) {
@@ -38,6 +39,7 @@ export function generateDungeon(floor: number): DungeonState {
       if (rooms[y][x].type !== 'empty') continue;
       if (x === 0 && y === 0) continue;
       if (x === GRID_SIZE - 1 && y === GRID_SIZE - 1) continue;
+      if (isBossFloor && x === GRID_SIZE - 1 && y === GRID_SIZE - 2) continue;
       rooms[y][x].type = pickRandom(roomTypes);
     }
   }
@@ -47,7 +49,7 @@ export function generateDungeon(floor: number): DungeonState {
       const room = rooms[y][x];
 
       if (room.type === 'monster' || room.type === 'boss') {
-        const enemyPool = room.type === 'boss' ? BOSS_ENEMIES : getEnemiesForFloor(floor);
+        const enemyPool = room.type === 'boss' ? getBossesForFloor(floor) : getEnemiesForFloor(floor);
         const enemy = pickRandom(enemyPool);
         room.enemy = scaleEnemy(enemy, floor);
       }
@@ -78,8 +80,14 @@ export function generateDungeon(floor: number): DungeonState {
 }
 
 function getEnemiesForFloor(floor: number) {
-  const maxIndex = Math.min(ENEMIES.length, Math.ceil(floor / 2));
+  const maxIndex = Math.min(ENEMIES.length, Math.max(1, Math.ceil(floor / 2)));
   return ENEMIES.slice(0, maxIndex);
+}
+
+function getBossesForFloor(floor: number) {
+  // Boss index grows with depth: floor 5 -> first boss, floor 10 -> second, etc.
+  const bossIndex = Math.min(BOSS_ENEMIES.length - 1, Math.max(0, Math.floor(floor / 5) - 1));
+  return BOSS_ENEMIES.slice(0, bossIndex + 1);
 }
 
 function scaleEnemy(enemy: Enemy, floor: number): Enemy {

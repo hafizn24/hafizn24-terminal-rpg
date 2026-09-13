@@ -23,10 +23,10 @@ const SHOP_ICONS: Record<ShopType, string> = {
 };
 
 export function ShopScreen() {
-  const { player, updatePlayer, setScreen } = useGameStore();
+  const { player, updatePlayer, setScreen, selectedShop } = useGameStore();
   const addLog = useUIStore((s) => s.addLog);
   const [mode, setMode] = useState<ShopMode>('buy');
-  const [shopType] = useState<ShopType>('blacksmith');
+  const shopType: ShopType = selectedShop;
 
   if (!player) return null;
 
@@ -43,13 +43,11 @@ export function ShopScreen() {
       return;
     }
 
-    const newInv = [...player.inventory];
-    const existing = newInv.find((s) => s.item.id === item.id);
-    if (existing) {
-      existing.quantity++;
-    } else {
-      newInv.push({ item, quantity: 1 });
-    }
+    const idx = player.inventory.findIndex((s) => s.item.id === item.id);
+    const newInv =
+      idx >= 0
+        ? player.inventory.map((s, i) => (i === idx ? { ...s, quantity: s.quantity + 1 } : s))
+        : [...player.inventory, { item, quantity: 1 }];
 
     updatePlayer({ gold: player.gold - item.price, inventory: newInv });
     addLog(`Bought ${item.name} for ${item.price} gold.`, 'loot');
@@ -64,7 +62,16 @@ export function ShopScreen() {
       .map((s) => (s.item.id === itemId ? { ...s, quantity: s.quantity - 1 } : s))
       .filter((s) => s.quantity > 0);
 
-    updatePlayer({ gold: player.gold + sellPrice, inventory: newInv });
+    // Unequip if the last copy was sold so equipment never references a missing item.
+    const newEquipment = { ...player.equipment };
+    if (slot.quantity <= 1) {
+      if (newEquipment.weapon?.id === itemId) newEquipment.weapon = null;
+      if (newEquipment.armor?.id === itemId) newEquipment.armor = null;
+    }
+
+    const newGold = player.gold + sellPrice;
+    updatePlayer({ gold: newGold, inventory: newInv, equipment: newEquipment });
+    useGameStore.getState().updateQuestProgress('gold', 'any', newGold);
     addLog(`Sold ${slot.item.name} for ${sellPrice} gold.`, 'loot');
   };
 

@@ -4,7 +4,7 @@ import { useUIStore } from '../../game/store/uiStore';
 import { Button } from '../ui/Button';
 import { Panel } from '../ui/Panel';
 import { ProgressBar } from '../ui/ProgressBar';
-import { calcDamage, calcCritChance, chance, pickRandom } from '../../utils/rng';
+import { calcDamage, calcCritChance, calcExpForLevel, chance, pickRandom } from '../../utils/rng';
 import { ITEMS } from '../../game/data/items';
 import { CLASSES } from '../../game/data/classes';
 import type { Enemy } from '../../types/game';
@@ -49,6 +49,10 @@ export function CombatScreen() {
   const enemyRef = useRef<Enemy | null>(null);
   const playerRef = useRef(player);
   playerRef.current = player;
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const dungeonRef = useRef(dungeon);
+  dungeonRef.current = dungeon;
 
   useEffect(() => {
     if (dungeon) {
@@ -83,21 +87,6 @@ export function CombatScreen() {
     setTimeout(() => setState((s) => ({ ...s, shaking: false })), 300);
   };
 
-
-  const keyMap = useMemo(() => ({
-    '1': handleAttack,
-    Enter: handleAttack,
-    '2': handleSkill,
-    '3': handleItem,
-    '4': handleRun,
-    Escape: handleRun,
-  }), [state.isPlayerTurn, state.isOver, state.enemyHp]);
-
-  useKeyboard(keyMap);
-
-  if (!player || !enemyRef.current) return <div className="text-terminal-dim">No enemy...</div>;
-  const enemy = enemyRef.current;
-
   const getPlayerAttack = () => playerRef.current!.stats.str + (playerRef.current!.equipment.weapon?.statBonus?.str || 0);
   const getPlayerDef = () => Math.floor((playerRef.current!.equipment.armor?.statBonus?.hp || 0) / 5);
 
@@ -105,17 +94,18 @@ export function CombatScreen() {
     setState((s) => {
       if (s.isOver) return s;
       const p = playerRef.current!;
+      const e = enemyRef.current!;
 
       let dmg: number;
       let logMsg: string;
 
-      if (enemy.skills.length > 0 && chance(0.35)) {
-        const skill = pickRandom(enemy.skills);
-        dmg = calcDamage(Math.floor(enemy.attack * skill.power), getPlayerDef());
-        logMsg = `${enemy.name} uses ${skill.name}! ${dmg} damage!`;
+      const rolledSkill = e.skills.length > 0 ? pickRandom(e.skills) : null;
+      if (rolledSkill && chance(rolledSkill.chance)) {
+        dmg = calcDamage(Math.floor(e.attack * rolledSkill.power), getPlayerDef());
+        logMsg = `${e.name} uses ${rolledSkill.name}! ${dmg} damage!`;
       } else {
-        dmg = calcDamage(enemy.attack, getPlayerDef());
-        logMsg = `${enemy.name} attacks for ${dmg} damage.`;
+        dmg = calcDamage(e.attack, getPlayerDef());
+        logMsg = `${e.name} attacks for ${dmg} damage.`;
       }
 
       const newHp = Math.max(0, p.stats.hp - dmg);
@@ -126,7 +116,7 @@ export function CombatScreen() {
       addDamageNumber(`-${dmg}`, '#ff0040', 50 + Math.random() * 30, 60 + Math.random() * 20);
 
       if (newHp <= 0) {
-        setGameOver(`Defeated by ${enemy.name} on floor ${dungeon?.floor || 1}.`);
+        setGameOver(`Defeated by ${e.name} on floor ${dungeonRef.current?.floor || 1}.`);
         return {
           ...s,
           combatLog: [...s.combatLog, logMsg, 'You have been slain!'],
@@ -144,13 +134,15 @@ export function CombatScreen() {
   };
 
   const handleAttack = () => {
-    if (!state.isPlayerTurn || state.isOver) return;
+    const s = stateRef.current;
+    if (!s.isPlayerTurn || s.isOver) return;
     const p = playerRef.current!;
+    const e = enemyRef.current!;
 
     const crit = chance(calcCritChance(p.stats.dex));
-    const dmg = calcDamage(getPlayerAttack(), enemy.defense);
+    const dmg = calcDamage(getPlayerAttack(), e.defense);
     const finalDmg = crit ? Math.floor(dmg * 2) : dmg;
-    const newEnemyHp = Math.max(0, state.enemyHp - finalDmg);
+    const newEnemyHp = Math.max(0, s.enemyHp - finalDmg);
 
     const logMsg = crit
       ? `CRITICAL HIT! You deal ${finalDmg} damage!`
@@ -159,11 +151,11 @@ export function CombatScreen() {
     addDamageNumber(crit ? `CRIT -${finalDmg}` : `-${finalDmg}`, crit ? '#ffd700' : '#00ff41', 50 + Math.random() * 30, 20 + Math.random() * 20);
     if (crit) triggerShake();
 
-    setState((s) => ({
-      ...s,
+    setState((prev) => ({
+      ...prev,
       enemyHp: newEnemyHp,
       isPlayerTurn: false,
-      combatLog: [...s.combatLog, logMsg],
+      combatLog: [...prev.combatLog, logMsg],
     }));
     addLog(logMsg, crit ? 'loot' : 'combat');
 
@@ -175,19 +167,21 @@ export function CombatScreen() {
   };
 
   const handleSkill = () => {
-    if (!state.isPlayerTurn || state.isOver) return;
+    const s = stateRef.current;
+    if (!s.isPlayerTurn || s.isOver) return;
     const p = playerRef.current!;
+    const e = enemyRef.current!;
     const classDef = CLASSES.find((c) => c.id === p.class);
     if (!classDef) return;
 
     if (p.stats.mp < classDef.skill.mpCost) {
-      setState((s) => ({ ...s, combatLog: [...s.combatLog, 'Not enough MP!'] }));
+      setState((prev) => ({ ...prev, combatLog: [...prev.combatLog, 'Not enough MP!'] }));
       return;
     }
 
     const atk = p.stats.str + p.stats.int + (p.equipment.weapon?.statBonus?.str || 0);
-    const dmg = calcDamage(Math.floor(atk * classDef.skill.power / 2), enemy.defense);
-    const newEnemyHp = Math.max(0, state.enemyHp - dmg);
+    const dmg = calcDamage(Math.floor(atk * classDef.skill.power / 2), e.defense);
+    const newEnemyHp = Math.max(0, s.enemyHp - dmg);
 
     updatePlayer({ stats: { ...p.stats, mp: p.stats.mp - classDef.skill.mpCost } });
 
@@ -195,11 +189,11 @@ export function CombatScreen() {
     triggerShake();
 
     const logMsg = `${classDef.skill.name}! Deals ${dmg} damage!`;
-    setState((s) => ({
-      ...s,
+    setState((prev) => ({
+      ...prev,
       enemyHp: newEnemyHp,
       isPlayerTurn: false,
-      combatLog: [...s.combatLog, logMsg],
+      combatLog: [...prev.combatLog, logMsg],
     }));
     addLog(logMsg, 'combat');
 
@@ -211,14 +205,24 @@ export function CombatScreen() {
   };
 
   const handleItem = () => {
-    if (!state.isPlayerTurn || state.isOver) return;
+    const s = stateRef.current;
+    if (!s.isPlayerTurn || s.isOver) return;
     const p = playerRef.current!;
 
     const potion = p.inventory.find(
-      (s) => s.item.type === 'potion' && s.quantity > 0 && (s.item.healAmount || s.item.mpRestoreAmount)
+      (slot) => slot.item.type === 'potion' && slot.quantity > 0 && (slot.item.healAmount || slot.item.mpRestoreAmount)
     );
     if (!potion) {
-      setState((s) => ({ ...s, combatLog: [...s.combatLog, 'No potions available!'] }));
+      setState((prev) => ({ ...prev, combatLog: [...prev.combatLog, 'No potions available!'] }));
+      return;
+    }
+
+    if (potion.item.healAmount && p.stats.hp >= p.stats.maxHp) {
+      setState((prev) => ({ ...prev, combatLog: [...prev.combatLog, 'HP already full! Potion not used.'] }));
+      return;
+    }
+    if (potion.item.mpRestoreAmount && !potion.item.healAmount && p.stats.mp >= p.stats.maxMp) {
+      setState((prev) => ({ ...prev, combatLog: [...prev.combatLog, 'MP already full! Potion not used.'] }));
       return;
     }
 
@@ -238,26 +242,27 @@ export function CombatScreen() {
     }
 
     const newInv = p.inventory
-      .map((s) => (s.item.id === potion.item.id ? { ...s, quantity: s.quantity - 1 } : s))
-      .filter((s) => s.quantity > 0);
+      .map((slot) => (slot.item.id === potion.item.id ? { ...slot, quantity: slot.quantity - 1 } : slot))
+      .filter((slot) => slot.quantity > 0);
 
     updatePlayer({ stats: newStats, inventory: newInv });
-    setState((s) => ({ ...s, isPlayerTurn: false, combatLog: [...s.combatLog, logMsg] }));
+    setState((prev) => ({ ...prev, isPlayerTurn: false, combatLog: [...prev.combatLog, logMsg] }));
     addLog(logMsg, 'loot');
 
     setTimeout(enemyTurn, 800);
   };
 
   const handleRun = () => {
-    if (!state.isPlayerTurn || state.isOver) return;
+    const s = stateRef.current;
+    if (!s.isPlayerTurn || s.isOver) return;
     const p = playerRef.current!;
     const runChance = 0.4 + p.stats.dex * 0.02;
     if (chance(runChance)) {
-      setState((s) => ({ ...s, combatLog: [...s.combatLog, 'Escaped successfully!'], isOver: true, won: false }));
+      setState((prev) => ({ ...prev, combatLog: [...prev.combatLog, 'Escaped successfully!'], isOver: true, won: false }));
       addLog('Escaped from battle!', 'system');
       setTimeout(() => setScreen('dungeon'), 1000);
     } else {
-      setState((s) => ({ ...s, isPlayerTurn: false, combatLog: [...s.combatLog, 'Failed to escape!'] }));
+      setState((prev) => ({ ...prev, isPlayerTurn: false, combatLog: [...prev.combatLog, 'Failed to escape!'] }));
       addLog('Failed to escape!', 'danger');
       setTimeout(enemyTurn, 800);
     }
@@ -265,30 +270,32 @@ export function CombatScreen() {
 
   const handleVictory = () => {
     const p = playerRef.current!;
-    const expGain = enemy.expReward;
-    const goldGain = enemy.goldReward;
+    const e = enemyRef.current!;
+    const expGain = e.expReward;
+    const goldGain = e.goldReward;
     let newExp = p.exp + expGain;
     let newLevel = p.level;
     const newStats = { ...p.stats };
 
-    const newInv = [...p.inventory];
-    enemy.lootTable.forEach((loot) => {
+    let newInv = [...p.inventory];
+    e.lootTable.forEach((loot) => {
       if (chance(loot.chance)) {
         const item = ITEMS[loot.itemId];
         if (item) {
-          const existing = newInv.find((s) => s.item.id === item.id);
-          if (existing) {
-            existing.quantity += loot.quantity;
+          const idx = newInv.findIndex((s) => s.item.id === item.id);
+          if (idx >= 0) {
+            newInv = newInv.map((s, i) => (i === idx ? { ...s, quantity: s.quantity + loot.quantity } : s));
           } else {
-            newInv.push({ item, quantity: loot.quantity });
+            newInv = [...newInv, { item, quantity: loot.quantity }];
           }
           addLog(`Loot: ${item.name} x${loot.quantity}`, 'loot');
         }
       }
     });
 
-    while (newExp >= p.expToNext) {
-      newExp -= p.expToNext;
+    let threshold = p.expToNext;
+    while (newExp >= threshold) {
+      newExp -= threshold;
       newLevel++;
       const classDef = CLASSES.find((c) => c.id === p.class);
       if (classDef) {
@@ -300,36 +307,39 @@ export function CombatScreen() {
         newStats.hp = newStats.maxHp;
         newStats.mp = newStats.maxMp;
       }
+      threshold = calcExpForLevel(newLevel);
       addLog(`LEVEL UP! Now level ${newLevel}!`, 'loot');
     }
 
     updatePlayer({
       level: newLevel,
       exp: newExp,
-      expToNext: Math.floor(50 * Math.pow(newLevel, 1.5)),
+      expToNext: threshold,
       stats: newStats,
       gold: p.gold + goldGain,
       inventory: newInv,
     });
 
-    useGameStore.getState().updateQuestProgress('kill', enemy.id);
+    useGameStore.getState().updateQuestProgress('kill', e.id);
+    useGameStore.getState().updateQuestProgress('gold', 'any', p.gold + goldGain);
 
-    if (dungeon) {
-      const newRooms = dungeon.rooms.map((row) =>
+    const d = dungeonRef.current;
+    if (d) {
+      const newRooms = d.rooms.map((row) =>
         row.map((r) => {
-          if (r.x === dungeon.playerPos.x && r.y === dungeon.playerPos.y) {
+          if (r.x === d.playerPos.x && r.y === d.playerPos.y) {
             return { ...r, type: 'empty' as const, enemy: undefined };
           }
           return { ...r };
         })
       );
-      setDungeon({ ...dungeon, rooms: newRooms });
+      setDungeon({ ...d, rooms: newRooms });
     }
 
     const logMsg = `Victory! +${expGain} EXP, +${goldGain} Gold`;
-    setState((s) => ({
-      ...s,
-      combatLog: [...s.combatLog, logMsg],
+    setState((prev) => ({
+      ...prev,
+      combatLog: [...prev.combatLog, logMsg],
       isOver: true,
       won: true,
     }));
@@ -337,6 +347,20 @@ export function CombatScreen() {
 
     setTimeout(() => setScreen('dungeon'), 1500);
   };
+
+  const keyMap = useMemo(() => ({
+    '1': handleAttack,
+    Enter: handleAttack,
+    '2': handleSkill,
+    '3': handleItem,
+    '4': handleRun,
+    Escape: handleRun,
+  }), []);
+
+  useKeyboard(keyMap);
+
+  if (!player || !enemyRef.current) return <div className="text-terminal-dim">No enemy...</div>;
+  const enemy = enemyRef.current;
 
   return (
     <div className={`flex flex-col gap-4 animate-fade-in max-w-2xl mx-auto ${state.shaking ? 'animate-[shake_0.3s_ease-in-out]' : ''}`}>
@@ -354,7 +378,7 @@ export function CombatScreen() {
 
         <Panel title={player.name} className="flex-1">
           <div className="text-xs text-terminal-dim mb-2 text-center uppercase">
-            {player.class} — Level {player.level}
+            {player.class} - Level {player.level}
           </div>
           <div className="space-y-1">
             <ProgressBar current={player.stats.hp} max={player.stats.maxHp} label="HP" color="red" />

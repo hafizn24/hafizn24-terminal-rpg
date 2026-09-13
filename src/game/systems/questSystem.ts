@@ -1,4 +1,5 @@
 import type { Quest } from '../../types/game';
+import { shuffleArray } from '../../utils/rng';
 
 
 const QUEST_TEMPLATES = [
@@ -64,8 +65,8 @@ const QUEST_TEMPLATES = [
   },
   {
     name: 'Dragon Slayer',
-    description: 'Defeat 2 goblin kings.',
-    objective: { type: 'kill' as const, target: 'goblin_king', required: 2 },
+    description: 'Defeat 2 dragon wyrmlings.',
+    objective: { type: 'kill' as const, target: 'dragon_wyrmling', required: 2 },
     reward: { gold: 250, exp: 150, itemId: 'steel_sword' },
   },
   {
@@ -77,7 +78,7 @@ const QUEST_TEMPLATES = [
 ];
 
 export function generateDailyQuests(): Quest[] {
-  const shuffled = [...QUEST_TEMPLATES].sort(() => Math.random() - 0.5);
+  const shuffled = shuffleArray(QUEST_TEMPLATES);
   return shuffled.slice(0, 3).map((template, i) => ({
     id: `daily_${Date.now()}_${i}`,
     name: template.name,
@@ -90,12 +91,8 @@ export function generateDailyQuests(): Quest[] {
   }));
 }
 
-export function generateSideQuests(floor: number): Quest[] {
-  const available = QUEST_TEMPLATES.filter((t) => {
-    if (t.objective.type === 'floor') return t.objective.required >= floor;
-    return true;
-  });
-  const shuffled = available.sort(() => Math.random() - 0.5);
+export function generateSideQuests(_floor: number): Quest[] {
+  const shuffled = shuffleArray(QUEST_TEMPLATES);
   return shuffled.slice(0, 2).map((template, i) => ({
     id: `side_${Date.now()}_${i}`,
     name: template.name,
@@ -114,7 +111,12 @@ export function checkQuestProgress(quest: Quest, eventType: string, target: stri
   if (quest.objective.type === 'kill') {
     return quest.objective.target === 'any' || quest.objective.target === target;
   }
-  return false;
+  if (quest.objective.type === 'collect') {
+    return quest.objective.target === 'any' || quest.objective.target === target;
+  }
+  // 'floor' and 'gold' events carry the absolute value (floor/gold amount);
+  // the store sets progress from that value, so any matching event counts.
+  return true;
 }
 
 export function isQuestComplete(quest: Quest): boolean {

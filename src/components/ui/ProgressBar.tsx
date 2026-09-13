@@ -25,7 +25,7 @@ export function ProgressBar({
     yellow: 'text-terminal-yellow',
   };
 
-  const bar = '¦'.repeat(filled) + '¦'.repeat(empty);
+  const bar = '\u2588'.repeat(filled) + '\u2591'.repeat(empty);
 
   return (
     <div className="flex items-center gap-2 text-xs font-mono">

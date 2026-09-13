@@ -49,6 +49,19 @@ export function DungeonScreen() {
     handleRoomEntry(room, p);
   };
 
+  const clearRoomAt = (x: number, y: number, extra?: Partial<Room>) => {
+    const latest = useGameStore.getState().dungeon;
+    if (!latest) return;
+    const cleared = latest.rooms.map((row) =>
+      row.map((r) =>
+        r.x === x && r.y === y
+          ? { ...r, type: 'empty' as const, enemy: undefined, ...extra }
+          : { ...r }
+      )
+    );
+    useGameStore.getState().setDungeon({ ...latest, rooms: cleared });
+  };
+
   const handleRoomEntry = (room: Room, p: typeof playerRef.current) => {
     if (!p) return;
     switch (room.type) {
@@ -58,24 +71,29 @@ export function DungeonScreen() {
           useGameStore.getState().setScreen('combat');
         }
         break;
-      case 'treasure':
+      case 'treasure': {
         if (room.item) {
           addLog(`Found: ${room.item.name}!`, 'loot');
-          const inv = [...p.inventory];
-          const existing = inv.find((s) => s.item.id === room.item!.id);
-          if (existing) {
-            existing.quantity++;
-          } else {
-            inv.push({ item: room.item, quantity: 1 });
-          }
+          const idx = p.inventory.findIndex((s) => s.item.id === room.item!.id);
+          const inv =
+            idx >= 0
+              ? p.inventory.map((s, i) => (i === idx ? { ...s, quantity: s.quantity + 1 } : s))
+              : [...p.inventory, { item: room.item, quantity: 1 }];
           updatePlayer({ inventory: inv });
+          // Loot the chest so re-entering doesn't farm infinite items.
+          clearRoomAt(room.x, room.y, { item: undefined });
+        } else {
+          addLog('An empty chest. Already looted.', 'info');
         }
         break;
+      }
       case 'trap': {
         const dmg = room.trapDamage || 10;
         const newHp = Math.max(0, p.stats.hp - dmg);
         updatePlayer({ stats: { ...p.stats, hp: newHp } });
         addLog(`Trap! Took ${dmg} damage!`, 'danger');
+        // Disarm the trap so it only triggers once.
+        clearRoomAt(room.x, room.y, { trapDamage: undefined });
         if (newHp <= 0) setGameOver('Killed by a dungeon trap.');
         break;
       }
@@ -105,7 +123,7 @@ export function DungeonScreen() {
     const newDungeon = generateDungeon(nextFloor);
     setDungeon(newDungeon);
     addLog(`Descended to floor ${nextFloor}.`, 'system');
-    useGameStore.getState().updateQuestProgress('floor', 'any');
+    useGameStore.getState().updateQuestProgress('floor', 'any', nextFloor);
   };
 
   const keyMap = useMemo(() => ({
@@ -244,19 +262,20 @@ export function DungeonScreen() {
               <Button size="sm" onClick={() => handleMove(-1, 0)} disabled={!adjacentRooms.left}>
                 {'<'} West
               </Button>
-              {isCurrentStairs ? (
-                <Button size="sm" onClick={handleDescend} glow>
-                  {'v'} Descend
-                </Button>
-              ) : (
-                <Button size="sm" disabled>
-                  {'v'} South
-                </Button>
-              )}
+              <Button size="sm" onClick={() => handleMove(0, 1)} disabled={!adjacentRooms.down}>
+                {'v'} South
+              </Button>
               <Button size="sm" onClick={() => handleMove(1, 0)} disabled={!adjacentRooms.right}>
                 {'>'} East
               </Button>
             </div>
+            {isCurrentStairs && (
+              <div className="mt-2">
+                <Button size="sm" onClick={handleDescend} glow className="w-full">
+                  {'>>'} Descend to Floor {dungeon.floor + 1}
+                </Button>
+              </div>
+            )}
           </Panel>
 
           <LogPanel />

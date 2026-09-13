@@ -47,6 +47,15 @@ export function InventoryScreen() {
     const slot = player.inventory.find((s) => s.item.id === itemId);
     if (!slot || slot.item.type !== 'potion') return;
 
+    if (slot.item.healAmount && player.stats.hp >= player.stats.maxHp) {
+      addLog('HP already full! Potion not used.', 'info');
+      return;
+    }
+    if (slot.item.mpRestoreAmount && !slot.item.healAmount && player.stats.mp >= player.stats.maxMp) {
+      addLog('MP already full! Potion not used.', 'info');
+      return;
+    }
+
     const newStats = { ...player.stats };
     let logMsg = '';
 
@@ -69,10 +78,18 @@ export function InventoryScreen() {
   };
 
   const handleDrop = (itemId: string) => {
+    const slot = player.inventory.find((s) => s.item.id === itemId);
+    if (!slot) return;
     const newInv = player.inventory
       .map((s) => (s.item.id === itemId ? { ...s, quantity: s.quantity - 1 } : s))
       .filter((s) => s.quantity > 0);
-    updatePlayer({ inventory: newInv });
+    // Unequip if the last copy was dropped so equipment never references a missing item.
+    const newEquipment = { ...player.equipment };
+    if (slot.quantity <= 1) {
+      if (newEquipment.weapon?.id === itemId) newEquipment.weapon = null;
+      if (newEquipment.armor?.id === itemId) newEquipment.armor = null;
+    }
+    updatePlayer({ inventory: newInv, equipment: newEquipment });
     addLog('Item dropped.', 'info');
   };
 
