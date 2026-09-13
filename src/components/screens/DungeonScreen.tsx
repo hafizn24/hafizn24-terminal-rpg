@@ -6,7 +6,6 @@ import { Panel } from '../ui/Panel';
 import { LogPanel } from '../terminal/LogPanel';
 import { generateDungeon, getAdjacentRooms } from '../../game/systems/dungeonGenerator';
 import { useKeyboard } from '../../hooks/useKeyboard';
-import { MobileNav } from '../ui/MobileNav';
 import type { Room } from '../../types/game';
 
 export function DungeonScreen() {
@@ -272,44 +271,6 @@ export function DungeonScreen() {
         </Panel>
 
         <div className="flex-1 flex flex-col gap-3">
-          <Panel title="Current Room">
-            <div className="text-sm">
-              {currentRoom.type === 'empty' && (
-                <span className="text-terminal-dim">An empty chamber. Dust and silence.</span>
-              )}
-              {currentRoom.type === 'monster' && currentRoom.enemy && (
-                <span className="text-terminal-red">
-                  A {currentRoom.enemy.name} lurks here!
-                </span>
-              )}
-              {currentRoom.type === 'elite' && currentRoom.enemy && (
-                <span className="text-terminal-yellow">
-                  An ELITE {currentRoom.enemy.name} radiates menace. Better loot!
-                </span>
-              )}
-              {currentRoom.type === 'shrine' && (
-                <span className="text-terminal-cyan">A glowing shrine. Restores 30% HP/MP once.</span>
-              )}
-              {currentRoom.type === 'treasure' && (
-                <span className="text-terminal-yellow">A treasure chest gleams in the dark!</span>
-              )}
-              {currentRoom.type === 'trap' && (
-                <span className="text-terminal-red">You sense danger in this room...</span>
-              )}
-              {currentRoom.type === 'shop' && (
-                <span className="text-terminal-green">A traveling merchant waves at you.</span>
-              )}
-              {currentRoom.type === 'stairs' && (
-                <span className="text-terminal-cyan">Stairs leading deeper. Press E or Descend.</span>
-              )}
-              {currentRoom.type === 'boss' && currentRoom.enemy && (
-                <span className="text-terminal-red animate-pulse-glow">
-                  {'!'} BOSS: {currentRoom.enemy.name} awaits!
-                </span>
-              )}
-            </div>
-          </Panel>
-
           <Panel title="Actions">
             <div className="grid grid-cols-3 gap-2">
               <div />
@@ -337,11 +298,6 @@ export function DungeonScreen() {
           </Panel>
 
           <LogPanel />
-
-          <MobileNav
-            onMove={(dx, dy) => handleMove(dx, dy)}
-            canMove={adjacentRooms}
-          />
         </div>
       </div>
     </div>
