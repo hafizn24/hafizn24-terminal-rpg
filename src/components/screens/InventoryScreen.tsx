@@ -7,6 +7,8 @@ import { getRarityColor } from '../../utils/rng';
 
 type Tab = 'all' | 'equipment' | 'consumables' | 'misc';
 
+const ACCESSORY_IDS = new Set(['lucky_charm', 'iron_ring', 'sage_amulet']);
+
 export function InventoryScreen() {
   const { player, updatePlayer, setScreen } = useGameStore();
   const addLog = useUIStore((s) => s.addLog);
@@ -17,7 +19,7 @@ export function InventoryScreen() {
   const filteredItems = player.inventory.filter((slot) => {
     if (activeTab === 'all') return true;
     if (activeTab === 'equipment') return slot.item.type === 'weapon' || slot.item.type === 'armor';
-    if (activeTab === 'consumables') return slot.item.type === 'potion';
+    if (activeTab === 'consumables') return slot.item.type === 'potion' || !!slot.item.effect;
     if (activeTab === 'misc') return slot.item.type === 'misc' || slot.item.type === 'key';
     return true;
   });
@@ -27,8 +29,9 @@ export function InventoryScreen() {
     if (!slot) return;
     const item = slot.item;
 
-    let equipSlot: 'weapon' | 'armor' | null = null;
+    let equipSlot: 'weapon' | 'armor' | 'accessory' | null = null;
     if (item.type === 'weapon') equipSlot = 'weapon';
+    else if (ACCESSORY_IDS.has(item.id)) equipSlot = 'accessory';
     else if (item.type === 'armor') equipSlot = 'armor';
     if (!equipSlot) return;
 
@@ -38,6 +41,22 @@ export function InventoryScreen() {
       addLog(`Unequipped ${item.name}.`, 'info');
     } else {
       newEquipment[equipSlot] = item;
+      // Apply max HP/MP bonuses immediately without overhealing.
+      if (item.statBonus?.hp || item.statBonus?.mp) {
+        const maxHpBonus = item.statBonus.hp ?? 0;
+        const maxMpBonus = item.statBonus.mp ?? 0;
+        const prevEquipped = player.equipment[equipSlot];
+        const prevHp = prevEquipped?.statBonus?.hp ?? 0;
+        const prevMp = prevEquipped?.statBonus?.mp ?? 0;
+        const newStats = {
+          ...player.stats,
+          maxHp: player.stats.maxHp - prevHp + maxHpBonus,
+          maxMp: player.stats.maxMp - prevMp + maxMpBonus,
+        };
+        updatePlayer({ equipment: newEquipment, stats: newStats });
+        addLog(`Equipped ${item.name}.`, 'info');
+        return;
+      }
       addLog(`Equipped ${item.name}.`, 'info');
     }
     updatePlayer({ equipment: newEquipment });
@@ -45,7 +64,12 @@ export function InventoryScreen() {
 
   const handleUse = (itemId: string) => {
     const slot = player.inventory.find((s) => s.item.id === itemId);
-    if (!slot || slot.item.type !== 'potion') return;
+    if (!slot || (slot.item.type !== 'potion' && !slot.item.effect)) return;
+
+    if (slot.item.effect) {
+      addLog(`${slot.item.name} can only be used in combat.`, 'info');
+      return;
+    }
 
     if (slot.item.healAmount && player.stats.hp >= player.stats.maxHp) {
       addLog('HP already full! Potion not used.', 'info');
@@ -80,6 +104,7 @@ export function InventoryScreen() {
   const handleDrop = (itemId: string) => {
     const slot = player.inventory.find((s) => s.item.id === itemId);
     if (!slot) return;
+    if (!window.confirm(`Drop 1x ${slot.item.name}? This cannot be undone.`)) return;
     const newInv = player.inventory
       .map((s) => (s.item.id === itemId ? { ...s, quantity: s.quantity - 1 } : s))
       .filter((s) => s.quantity > 0);
@@ -88,6 +113,7 @@ export function InventoryScreen() {
     if (slot.quantity <= 1) {
       if (newEquipment.weapon?.id === itemId) newEquipment.weapon = null;
       if (newEquipment.armor?.id === itemId) newEquipment.armor = null;
+      if (newEquipment.accessory?.id === itemId) newEquipment.accessory = null;
     }
     updatePlayer({ inventory: newInv, equipment: newEquipment });
     addLog('Item dropped.', 'info');
@@ -140,7 +166,9 @@ export function InventoryScreen() {
           </div>
           <div>
             <span className="text-terminal-dim">Accessory: </span>
-            <span className="text-terminal-dim">None</span>
+            <span style={{ color: player.equipment.accessory ? getRarityColor(player.equipment.accessory.rarity) : undefined }}>
+              {player.equipment.accessory?.name || 'None'}
+            </span>
           </div>
         </div>
       </Panel>
@@ -168,16 +196,26 @@ export function InventoryScreen() {
                     )}
                   </div>
                   <div className="text-terminal-dim text-[10px]">{slot.item.description}</div>
+                  {slot.item.statBonus && (
+                    <div className="text-terminal-green text-[10px]">
+                      {Object.entries(slot.item.statBonus).map(([stat, val]) => (
+                        <span key={stat} className="mr-2">+{val} {stat.toUpperCase()}</span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-1 ml-2">
                   {(slot.item.type === 'weapon' || slot.item.type === 'armor') && (
                     <Button size="sm" onClick={() => handleEquip(slot.item.id)}>
-                      {player.equipment[slot.item.type === 'weapon' ? 'weapon' : 'armor']?.id === slot.item.id
-                        ? 'Unequip'
-                        : 'Equip'}
+                      {(() => {
+                        const target = ACCESSORY_IDS.has(slot.item.id)
+                          ? 'accessory'
+                          : slot.item.type === 'weapon' ? 'weapon' : 'armor';
+                        return player.equipment[target]?.id === slot.item.id ? 'Unequip' : 'Equip';
+                      })()}
                     </Button>
                   )}
-                  {slot.item.type === 'potion' && (
+                  {(slot.item.type === 'potion') && (
                     <Button size="sm" onClick={() => handleUse(slot.item.id)}>
                       Use
                     </Button>

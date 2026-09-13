@@ -77,10 +77,11 @@ const QUEST_TEMPLATES = [
   },
 ];
 
-export function generateDailyQuests(): Quest[] {
+export function generateDailyQuests(date = new Date()): Quest[] {
   const shuffled = shuffleArray(QUEST_TEMPLATES);
-  return shuffled.slice(0, 3).map((template, i) => ({
-    id: `daily_${Date.now()}_${i}`,
+  const day = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+  return shuffled.slice(0, 3).map((template) => ({
+    id: `daily_${day}_${template.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
     name: template.name,
     description: template.description,
     type: 'daily' as const,
@@ -93,8 +94,8 @@ export function generateDailyQuests(): Quest[] {
 
 export function generateSideQuests(_floor: number): Quest[] {
   const shuffled = shuffleArray(QUEST_TEMPLATES);
-  return shuffled.slice(0, 2).map((template, i) => ({
-    id: `side_${Date.now()}_${i}`,
+  return shuffled.slice(0, 2).map((template) => ({
+    id: `side_${template.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
     name: template.name,
     description: template.description,
     type: 'side' as const,

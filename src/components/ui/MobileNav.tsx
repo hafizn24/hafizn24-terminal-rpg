@@ -11,19 +11,19 @@ export function MobileNav({ onMove, canMove }: MobileNavProps) {
       <div className="text-terminal-dim text-[10px] mb-1">TOUCH NAV</div>
       <div className="grid grid-cols-3 gap-1 w-32">
         <div />
-        <Button size="sm" onClick={() => onMove(0, -1)} disabled={!canMove.up}>
+        <Button size="sm" onClick={() => onMove(0, -1)} disabled={!canMove.up} aria-label="Move north">
           {'^'}
         </Button>
         <div />
-        <Button size="sm" onClick={() => onMove(-1, 0)} disabled={!canMove.left}>
+        <Button size="sm" onClick={() => onMove(-1, 0)} disabled={!canMove.left} aria-label="Move west">
           {'<'}
         </Button>
         <div className="w-8" />
-        <Button size="sm" onClick={() => onMove(1, 0)} disabled={!canMove.right}>
+        <Button size="sm" onClick={() => onMove(1, 0)} disabled={!canMove.right} aria-label="Move east">
           {'>'}
         </Button>
         <div />
-        <Button size="sm" onClick={() => onMove(0, 1)} disabled={!canMove.down}>
+        <Button size="sm" onClick={() => onMove(0, 1)} disabled={!canMove.down} aria-label="Move south">
           {'v'}
         </Button>
         <div />

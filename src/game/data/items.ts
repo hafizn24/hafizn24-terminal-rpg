@@ -207,10 +207,60 @@ export const ITEMS: Record<string, Item> = {
     description: 'A glowing gem pulsing with energy.',
     price: 50,
   },
+
+  // === ACCESSORIES ===
+  lucky_charm: {
+    id: 'lucky_charm',
+    name: 'Lucky Charm',
+    type: 'armor',
+    rarity: 'uncommon',
+    description: 'A small charm. +2 DEX, steadier crits.',
+    price: 180,
+    statBonus: { dex: 2 },
+  },
+  iron_ring: {
+    id: 'iron_ring',
+    name: 'Iron Ring',
+    type: 'armor',
+    rarity: 'uncommon',
+    description: 'A heavy ring. +25 max HP.',
+    price: 160,
+    statBonus: { hp: 25 },
+  },
+  sage_amulet: {
+    id: 'sage_amulet',
+    name: 'Sage Amulet',
+    type: 'armor',
+    rarity: 'rare',
+    description: 'Hums with mana. +3 INT, +15 max MP.',
+    price: 380,
+    statBonus: { int: 3, mp: 15 },
+  },
+
+  // === COMBAT CONSUMABLES ===
+  fire_bomb: {
+    id: 'fire_bomb',
+    name: 'Fire Bomb',
+    type: 'misc',
+    rarity: 'common',
+    description: 'Throw for 25 + 3 per floor fixed damage. Consumed on use.',
+    price: 60,
+    effect: 'bomb',
+    effectPower: 25,
+  },
+  smoke_bomb: {
+    id: 'smoke_bomb',
+    name: 'Smoke Bomb',
+    type: 'misc',
+    rarity: 'common',
+    description: 'Guaranteed escape from combat. Consumed on use.',
+    price: 40,
+    effect: 'smoke',
+  },
 };
 
 export const SHOP_STOCK: Record<string, string[]> = {
   blacksmith: ['rusty_sword', 'iron_sword', 'steel_sword', 'dagger', 'bone_sword', 'leather_armor', 'chain_mail', 'plate_armor', 'bone_shield'],
-  potion_shop: ['hp_potion_s', 'hp_potion_m', 'hp_potion_l', 'mp_potion'],
-  magic_shop: ['wooden_staff', 'magic_staff', 'crystal_staff', 'mage_robe'],
+  potion_shop: ['hp_potion_s', 'hp_potion_m', 'hp_potion_l', 'mp_potion', 'fire_bomb', 'smoke_bomb'],
+  magic_shop: ['wooden_staff', 'magic_staff', 'crystal_staff', 'mage_robe', 'lucky_charm', 'iron_ring', 'sage_amulet'],
 };

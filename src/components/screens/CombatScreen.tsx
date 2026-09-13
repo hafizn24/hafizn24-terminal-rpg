@@ -1,13 +1,12 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useGameStore } from '../../game/store/gameStore';
 import { useUIStore } from '../../game/store/uiStore';
 import { Button } from '../ui/Button';
 import { Panel } from '../ui/Panel';
 import { ProgressBar } from '../ui/ProgressBar';
-import { calcDamage, calcCritChance, calcExpForLevel, chance, pickRandom } from '../../utils/rng';
-import { ITEMS } from '../../game/data/items';
+import { calcDamage, calcCritChance, chance, pickRandom } from '../../utils/rng';
 import { CLASSES } from '../../game/data/classes';
-import type { Enemy } from '../../types/game';
+import type { Enemy, EnemySkill } from '../../types/game';
 import { useKeyboard } from '../../hooks/useKeyboard';
 
 interface CombatState {
@@ -19,6 +18,16 @@ interface CombatState {
   won: boolean;
   shaking: boolean;
   damageNumbers: DamageNumber[];
+  guarding: boolean;
+  intent: EnemySkill | null;
+  playerStatus: StatusEffect | null;
+  enemyStatus: StatusEffect | null;
+}
+
+interface StatusEffect {
+  id: 'burn' | 'poison';
+  dmg: number;
+  turns: number;
 }
 
 interface DamageNumber {
@@ -30,6 +39,12 @@ interface DamageNumber {
 }
 
 let dmgIdCounter = 0;
+
+function rollIntent(enemy: Enemy): EnemySkill | null {
+  if (enemy.skills.length === 0) return null;
+  const rolled = pickRandom(enemy.skills);
+  return chance(rolled.chance) ? rolled : null;
+}
 
 export function CombatScreen() {
   const { player, updatePlayer, setScreen, setGameOver, dungeon, setDungeon } = useGameStore();
@@ -44,6 +59,10 @@ export function CombatScreen() {
     won: false,
     shaking: false,
     damageNumbers: [],
+    guarding: false,
+    intent: null,
+    playerStatus: null,
+    enemyStatus: null,
   });
 
   const enemyRef = useRef<Enemy | null>(null);
@@ -63,12 +82,17 @@ export function CombatScreen() {
           ...s,
           enemyHp: room.enemy!.stats.hp,
           enemyMaxHp: room.enemy!.stats.maxHp,
+          intent: rollIntent(room.enemy!),
+          combatLog: [
+            room.enemy!.isElite ? `An ELITE ${room.enemy!.name} blocks your path!` : `A ${room.enemy!.name} appears!`,
+          ],
         }));
       }
     }
-  }, [dungeon]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const addDamageNumber = (value: string, color: string, x: number, y: number) => {
+  const addDamageNumber = useCallback((value: string, color: string, x: number, y: number) => {
     const id = ++dmgIdCounter;
     setState((s) => ({
       ...s,
@@ -80,66 +104,170 @@ export function CombatScreen() {
         damageNumbers: s.damageNumbers.filter((d) => d.id !== id),
       }));
     }, 1000);
-  };
+  }, []);
 
-  const triggerShake = () => {
+  const triggerShake = useCallback(() => {
     setState((s) => ({ ...s, shaking: true }));
     setTimeout(() => setState((s) => ({ ...s, shaking: false })), 300);
-  };
+  }, []);
 
-  const getPlayerAttack = () => playerRef.current!.stats.str + (playerRef.current!.equipment.weapon?.statBonus?.str || 0);
-  const getPlayerDef = () => Math.floor((playerRef.current!.equipment.armor?.statBonus?.hp || 0) / 5);
+  const getPlayerAttack = useCallback(() => {
+    const p = playerRef.current!;
+    return p.stats.str + (p.equipment.weapon?.statBonus?.str || 0) + (p.equipment.accessory?.statBonus?.str || 0);
+  }, []);
 
-  const enemyTurn = () => {
-    setState((s) => {
-      if (s.isOver) return s;
-      const p = playerRef.current!;
-      const e = enemyRef.current!;
+  const getPlayerDef = useCallback(() => {
+    const p = playerRef.current!;
+    return (
+      Math.floor((p.equipment.armor?.statBonus?.hp || 0) / 5) +
+      Math.floor((p.equipment.accessory?.statBonus?.hp || 0) / 5)
+    );
+  }, []);
 
-      let dmg: number;
-      let logMsg: string;
+  const getCritChance = useCallback(() => {
+    const p = playerRef.current!;
+    const base = calcCritChance(p.stats.dex + (p.equipment.accessory?.statBonus?.dex || 0));
+    if (p.equipment.accessory?.id === 'lucky_charm') return Math.min(0.5, base + 0.05);
+    return base;
+  }, []);
 
-      const rolledSkill = e.skills.length > 0 ? pickRandom(e.skills) : null;
-      if (rolledSkill && chance(rolledSkill.chance)) {
-        dmg = calcDamage(Math.floor(e.attack * rolledSkill.power), getPlayerDef());
-        logMsg = `${e.name} uses ${rolledSkill.name}! ${dmg} damage!`;
-      } else {
-        dmg = calcDamage(e.attack, getPlayerDef());
-        logMsg = `${e.name} attacks for ${dmg} damage.`;
-      }
-
-      const newHp = Math.max(0, p.stats.hp - dmg);
-      updatePlayer({ stats: { ...p.stats, hp: newHp } });
-
-      addLog(logMsg, 'danger');
-      triggerShake();
-      addDamageNumber(`-${dmg}`, '#ff0040', 50 + Math.random() * 30, 60 + Math.random() * 20);
-
-      if (newHp <= 0) {
-        setGameOver(`Defeated by ${e.name} on floor ${dungeonRef.current?.floor || 1}.`);
-        return {
+  const applyStatusTick = useCallback(
+    (side: 'player' | 'enemy'): boolean => {
+      // Returns true if the tick killed someone. Applies one tick immediately.
+      if (side === 'player') {
+        const st = stateRef.current.playerStatus;
+        const p = playerRef.current;
+        if (!st || !p) return false;
+        const newHp = Math.max(0, p.stats.hp - st.dmg);
+        updatePlayer({ stats: { ...p.stats, hp: newHp } });
+        addDamageNumber(`-${st.dmg} ${st.id}`, '#ff8800', 45, 70);
+        addLog(`${st.id === 'burn' ? 'Burn' : 'Poison'} deals ${st.dmg} damage to you!`, 'danger');
+        const remaining = st.turns - 1;
+        setState((s) => ({
           ...s,
-          combatLog: [...s.combatLog, logMsg, 'You have been slain!'],
-          isOver: true,
-          won: false,
-        };
+          playerStatus: remaining > 0 ? { ...st, turns: remaining } : null,
+          combatLog: [...s.combatLog, `${st.id === 'burn' ? 'Burn' : 'Poison'}: -${st.dmg} HP`],
+        }));
+        if (newHp <= 0) {
+          setGameOver(`Succumbed to ${st.id} against ${enemyRef.current?.name ?? 'the enemy'}.`);
+          setState((s) => ({ ...s, isOver: true, won: false }));
+          return true;
+        }
+        return false;
       }
-
-      return {
+      const st = stateRef.current.enemyStatus;
+      if (!st) return false;
+      const newHp = Math.max(0, stateRef.current.enemyHp - st.dmg);
+      addDamageNumber(`-${st.dmg} ${st.id}`, '#ff8800', 55, 25);
+      const remaining = st.turns - 1;
+      const killed = newHp <= 0;
+      setState((s) => ({
         ...s,
-        combatLog: [...s.combatLog, logMsg],
-        isPlayerTurn: true,
-      };
-    });
-  };
+        enemyHp: newHp,
+        enemyStatus: remaining > 0 && !killed ? { ...st, turns: remaining } : null,
+        combatLog: [...s.combatLog, `Enemy ${st.id}: -${st.dmg} HP`],
+      }));
+      if (killed) {
+        setTimeout(() => handleVictory(), 300);
+        return true;
+      }
+      return false;
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [addDamageNumber, addLog, updatePlayer, setGameOver]
+  );
 
-  const handleAttack = () => {
+  const enemyTurn = useCallback(() => {
     const s = stateRef.current;
-    if (!s.isPlayerTurn || s.isOver) return;
+    if (s.isOver) return;
     const p = playerRef.current!;
     const e = enemyRef.current!;
+    if (!p || !e) return;
 
-    const crit = chance(calcCritChance(p.stats.dex));
+    // Enemy status ticks first.
+    if (s.enemyStatus) {
+      const killed = applyStatusTick('enemy');
+      if (killed) return;
+      if (stateRef.current.enemyHp <= 0) return;
+    }
+
+    const intent = stateRef.current.intent;
+    let dmg: number;
+    let logMsg: string;
+    let statusToApply: StatusEffect | null = null;
+
+    if (intent) {
+      dmg = calcDamage(Math.floor(e.attack * intent.power), getPlayerDef());
+      logMsg = `${e.name} uses ${intent.name}! ${dmg} damage!`;
+      if (intent.status) statusToApply = { ...intent.status };
+    } else {
+      dmg = calcDamage(e.attack, getPlayerDef());
+      logMsg = `${e.name} attacks for ${dmg} damage.`;
+    }
+
+    if (stateRef.current.guarding) {
+      dmg = Math.max(1, Math.floor(dmg / 2));
+      logMsg += ' (Guarded!)';
+    }
+
+    const newHp = Math.max(0, p.stats.hp - dmg);
+    // Guard restores a little MP.
+    const newMp = stateRef.current.guarding
+      ? Math.min(p.stats.maxMp, p.stats.mp + 5)
+      : p.stats.mp;
+    updatePlayer({ stats: { ...p.stats, hp: newHp, mp: newMp } });
+
+    addLog(logMsg, 'danger');
+    triggerShake();
+    addDamageNumber(`-${dmg}`, '#ff0040', 50 + Math.random() * 30, 60 + Math.random() * 20);
+
+    if (newHp <= 0) {
+      setGameOver(`Defeated by ${e.name} on floor ${dungeonRef.current?.floor || 1}.`);
+      setState((prev) => ({
+        ...prev,
+        combatLog: [...prev.combatLog, logMsg, 'You have been slain!'],
+        isOver: true,
+        won: false,
+        guarding: false,
+      }));
+      return;
+    }
+
+    setState((prev) => ({
+      ...prev,
+      combatLog: [...prev.combatLog, logMsg],
+      isPlayerTurn: true,
+      guarding: false,
+      intent: rollIntent(e),
+      playerStatus: statusToApply ?? prev.playerStatus,
+    }));
+    if (statusToApply) {
+      addLog(`You are afflicted with ${statusToApply.id}!`, 'danger');
+    }
+  }, [addDamageNumber, addLog, applyStatusTick, getPlayerDef, setGameOver, triggerShake, updatePlayer]);
+
+  const checkVictory = useCallback(
+    (newEnemyHp: number) => {
+      if (newEnemyHp <= 0) {
+        setTimeout(() => handleVictory(), 300);
+        return true;
+      }
+      setTimeout(enemyTurn, 800);
+      return false;
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [enemyTurn]
+  );
+
+  const handleAttack = useCallback(() => {
+    const s = stateRef.current;
+    if (!s.isPlayerTurn || s.isOver) return;
+    if (applyStatusTick('player')) return;
+    const p = playerRef.current!;
+    const e = enemyRef.current!;
+    if (!p || !e) return;
+
+    const crit = chance(getCritChance());
     const dmg = calcDamage(getPlayerAttack(), e.defense);
     const finalDmg = crit ? Math.floor(dmg * 2) : dmg;
     const newEnemyHp = Math.max(0, s.enemyHp - finalDmg);
@@ -158,37 +286,46 @@ export function CombatScreen() {
       combatLog: [...prev.combatLog, logMsg],
     }));
     addLog(logMsg, crit ? 'loot' : 'combat');
+    checkVictory(newEnemyHp);
+  }, [addDamageNumber, addLog, applyStatusTick, checkVictory, getCritChance, getPlayerAttack, triggerShake]);
 
-    if (newEnemyHp <= 0) {
-      setTimeout(() => handleVictory(), 300);
-    } else {
-      setTimeout(enemyTurn, 800);
-    }
-  };
-
-  const handleSkill = () => {
+  const handleSkill = useCallback(() => {
     const s = stateRef.current;
     if (!s.isPlayerTurn || s.isOver) return;
+    if (applyStatusTick('player')) return;
     const p = playerRef.current!;
     const e = enemyRef.current!;
     const classDef = CLASSES.find((c) => c.id === p.class);
-    if (!classDef) return;
+    if (!classDef || !p || !e) return;
 
     if (p.stats.mp < classDef.skill.mpCost) {
-      setState((prev) => ({ ...prev, combatLog: [...prev.combatLog, 'Not enough MP!'] }));
+      setState((prev) => ({ ...prev, combatLog: [...prev.combatLog, 'Not enough MP! Guard to recover 5 MP.'] }));
       return;
     }
 
-    const atk = p.stats.str + p.stats.int + (p.equipment.weapon?.statBonus?.str || 0);
-    const dmg = calcDamage(Math.floor(atk * classDef.skill.power / 2), e.defense);
+    const atk =
+      p.stats.str +
+      p.stats.int +
+      (p.equipment.weapon?.statBonus?.str || 0) +
+      (p.equipment.accessory?.statBonus?.int || 0);
+    const isRogueBonus = p.class === 'rogue' && chance(0.25);
+    const base = calcDamage(Math.floor((atk * classDef.skill.power) / 2), e.defense);
+    const dmg = isRogueBonus ? base * 2 : base;
     const newEnemyHp = Math.max(0, s.enemyHp - dmg);
 
-    updatePlayer({ stats: { ...p.stats, mp: p.stats.mp - classDef.skill.mpCost } });
+    let newStats = { ...p.stats, mp: p.stats.mp - classDef.skill.mpCost };
+    let logMsg = `${classDef.skill.name}! Deals ${dmg} damage!${isRogueBonus ? ' SNEAK BONUS x2!' : ''}`;
+    if (p.class === 'cleric') {
+      const heal = 2 * p.stats.int;
+      newStats = { ...newStats, hp: Math.min(newStats.maxHp, newStats.hp + heal) };
+      logMsg += ` Healed ${heal} HP.`;
+      addDamageNumber(`+${heal}`, '#00ff41', 40, 75);
+    }
+    updatePlayer({ stats: newStats });
 
     addDamageNumber(`-${dmg}`, '#00ffff', 50 + Math.random() * 30, 20 + Math.random() * 20);
     triggerShake();
 
-    const logMsg = `${classDef.skill.name}! Deals ${dmg} damage!`;
     setState((prev) => ({
       ...prev,
       enemyHp: newEnemyHp,
@@ -196,65 +333,138 @@ export function CombatScreen() {
       combatLog: [...prev.combatLog, logMsg],
     }));
     addLog(logMsg, 'combat');
+    checkVictory(newEnemyHp);
+  }, [addDamageNumber, addLog, applyStatusTick, checkVictory, triggerShake, updatePlayer]);
 
-    if (newEnemyHp <= 0) {
-      setTimeout(() => handleVictory(), 300);
-    } else {
+  const consumeOne = useCallback(
+    (itemId: string): boolean => {
+      const p = playerRef.current;
+      if (!p) return false;
+      const newInv = p.inventory
+        .map((slot) => (slot.item.id === itemId ? { ...slot, quantity: slot.quantity - 1 } : slot))
+        .filter((slot) => slot.quantity > 0);
+      updatePlayer({ inventory: newInv });
+      return true;
+    },
+    [updatePlayer]
+  );
+
+  const handleUseItemId = useCallback(
+    (itemId: string) => {
+      const s = stateRef.current;
+      if (!s.isPlayerTurn || s.isOver) return;
+      if (applyStatusTick('player')) return;
+      const p = playerRef.current!;
+      const slot = p.inventory.find((sl) => sl.item.id === itemId && sl.quantity > 0);
+      if (!slot) {
+        setState((prev) => ({ ...prev, combatLog: [...prev.combatLog, 'None left!'] }));
+        return;
+      }
+      const item = slot.item;
+
+      if (item.effect === 'smoke') {
+        consumeOne(itemId);
+        const msg = `Used ${item.name}. Vanished in smoke!`;
+        setState((prev) => ({ ...prev, combatLog: [...prev.combatLog, msg], isOver: true, won: false }));
+        addLog('Escaped in smoke!', 'system');
+        setTimeout(() => setScreen('dungeon'), 800);
+        return;
+      }
+
+      if (item.effect === 'bomb') {
+        consumeOne(itemId);
+        const floor = dungeonRef.current?.floor ?? 1;
+        const dmg = item.effectPower ?? 25;
+        const total = dmg + floor * 3;
+        const newEnemyHp = Math.max(0, s.enemyHp - total);
+        const msg = `Threw ${item.name}! ${total} damage!`;
+        addDamageNumber(`-${total}`, '#ff8800', 55, 25);
+        triggerShake();
+        setState((prev) => ({
+          ...prev,
+          enemyHp: newEnemyHp,
+          isPlayerTurn: false,
+          combatLog: [...prev.combatLog, msg],
+        }));
+        addLog(msg, 'combat');
+        checkVictory(newEnemyHp);
+        return;
+      }
+
+      if (item.healAmount && p.stats.hp >= p.stats.maxHp) {
+        setState((prev) => ({ ...prev, combatLog: [...prev.combatLog, 'HP already full! Potion not used.'] }));
+        return;
+      }
+      if (item.mpRestoreAmount && !item.healAmount && p.stats.mp >= p.stats.maxMp) {
+        setState((prev) => ({ ...prev, combatLog: [...prev.combatLog, 'MP already full! Potion not used.'] }));
+        return;
+      }
+
+      const newStats = { ...p.stats };
+      let logMsg = '';
+      if (item.healAmount) {
+        const healed = Math.min(item.healAmount, newStats.maxHp - newStats.hp);
+        newStats.hp = Math.min(newStats.maxHp, newStats.hp + item.healAmount);
+        logMsg = `Used ${item.name}. Healed ${healed} HP.`;
+        addDamageNumber(`+${healed}`, '#00ff41', 45, 75);
+      } else if (item.mpRestoreAmount) {
+        const restored = Math.min(item.mpRestoreAmount, newStats.maxMp - newStats.mp);
+        newStats.mp = Math.min(newStats.maxMp, newStats.mp + item.mpRestoreAmount);
+        logMsg = `Used ${item.name}. Restored ${restored} MP.`;
+        addDamageNumber(`+${restored}`, '#00ffff', 45, 75);
+      } else {
+        return;
+      }
+
+      consumeOne(itemId);
+      updatePlayer({ stats: newStats });
+      setState((prev) => ({ ...prev, isPlayerTurn: false, combatLog: [...prev.combatLog, logMsg] }));
+      addLog(logMsg, 'loot');
       setTimeout(enemyTurn, 800);
-    }
-  };
+    },
+    [addDamageNumber, addLog, applyStatusTick, checkVictory, consumeOne, enemyTurn, setScreen, triggerShake, updatePlayer]
+  );
 
-  const handleItem = () => {
-    const s = stateRef.current;
-    if (!s.isPlayerTurn || s.isOver) return;
-    const p = playerRef.current!;
-
-    const potion = p.inventory.find(
-      (slot) => slot.item.type === 'potion' && slot.quantity > 0 && (slot.item.healAmount || slot.item.mpRestoreAmount)
+  const handleQuickPotion = useCallback(() => {
+    const p = playerRef.current;
+    if (!p) return;
+    // Prefer an HP potion when hurt, else MP potion.
+    const hpPotion = p.inventory.find(
+      (sl) => sl.item.healAmount && sl.quantity > 0 && p.stats.hp < p.stats.maxHp
     );
-    if (!potion) {
-      setState((prev) => ({ ...prev, combatLog: [...prev.combatLog, 'No potions available!'] }));
+    if (hpPotion) {
+      handleUseItemId(hpPotion.item.id);
       return;
     }
-
-    if (potion.item.healAmount && p.stats.hp >= p.stats.maxHp) {
-      setState((prev) => ({ ...prev, combatLog: [...prev.combatLog, 'HP already full! Potion not used.'] }));
+    const mpPotion = p.inventory.find(
+      (sl) => sl.item.mpRestoreAmount && !sl.item.healAmount && sl.quantity > 0 && p.stats.mp < p.stats.maxMp
+    );
+    if (mpPotion) {
+      handleUseItemId(mpPotion.item.id);
       return;
     }
-    if (potion.item.mpRestoreAmount && !potion.item.healAmount && p.stats.mp >= p.stats.maxMp) {
-      setState((prev) => ({ ...prev, combatLog: [...prev.combatLog, 'MP already full! Potion not used.'] }));
-      return;
-    }
+    const anyPotion = p.inventory.find(
+      (sl) => sl.item.type === 'potion' && sl.quantity > 0
+    );
+    if (anyPotion) handleUseItemId(anyPotion.item.id);
+    else
+      setState((prev) => ({ ...prev, combatLog: [...prev.combatLog, 'No usable potion! Try Guard or Run.'] }));
+  }, [handleUseItemId]);
 
-    const newStats = { ...p.stats };
-    let logMsg = '';
-
-    if (potion.item.healAmount) {
-      const healed = Math.min(potion.item.healAmount, newStats.maxHp - newStats.hp);
-      newStats.hp = Math.min(newStats.maxHp, newStats.hp + potion.item.healAmount);
-      logMsg = `Used ${potion.item.name}. Healed ${healed} HP.`;
-      addDamageNumber(`+${healed}`, '#00ff41', 45, 75);
-    } else if (potion.item.mpRestoreAmount) {
-      const restored = Math.min(potion.item.mpRestoreAmount, newStats.maxMp - newStats.mp);
-      newStats.mp = Math.min(newStats.maxMp, newStats.mp + potion.item.mpRestoreAmount);
-      logMsg = `Used ${potion.item.name}. Restored ${restored} MP.`;
-      addDamageNumber(`+${restored}`, '#00ffff', 45, 75);
-    }
-
-    const newInv = p.inventory
-      .map((slot) => (slot.item.id === potion.item.id ? { ...slot, quantity: slot.quantity - 1 } : slot))
-      .filter((slot) => slot.quantity > 0);
-
-    updatePlayer({ stats: newStats, inventory: newInv });
-    setState((prev) => ({ ...prev, isPlayerTurn: false, combatLog: [...prev.combatLog, logMsg] }));
-    addLog(logMsg, 'loot');
-
-    setTimeout(enemyTurn, 800);
-  };
-
-  const handleRun = () => {
+  const handleGuard = useCallback(() => {
     const s = stateRef.current;
     if (!s.isPlayerTurn || s.isOver) return;
+    if (applyStatusTick('player')) return;
+    const msg = 'You brace! Next hit halved, +5 MP.';
+    setState((prev) => ({ ...prev, guarding: true, isPlayerTurn: false, combatLog: [...prev.combatLog, msg] }));
+    addLog(msg, 'combat');
+    setTimeout(enemyTurn, 800);
+  }, [addLog, applyStatusTick, enemyTurn]);
+
+  const handleRun = useCallback(() => {
+    const s = stateRef.current;
+    if (!s.isPlayerTurn || s.isOver) return;
+    if (applyStatusTick('player')) return;
     const p = playerRef.current!;
     const runChance = 0.4 + p.stats.dex * 0.02;
     if (chance(runChance)) {
@@ -266,62 +476,49 @@ export function CombatScreen() {
       addLog('Failed to escape!', 'danger');
       setTimeout(enemyTurn, 800);
     }
-  };
+  }, [addLog, applyStatusTick, enemyTurn, setScreen]);
 
-  const handleVictory = () => {
+  const handleVictory = useCallback(() => {
     const p = playerRef.current!;
     const e = enemyRef.current!;
-    const expGain = e.expReward;
-    const goldGain = e.goldReward;
-    let newExp = p.exp + expGain;
-    let newLevel = p.level;
-    const newStats = { ...p.stats };
+    if (!p || !e) return;
+    const store = useGameStore.getState();
 
-    let newInv = [...p.inventory];
+    // Loot via shared helper.
     e.lootTable.forEach((loot) => {
       if (chance(loot.chance)) {
-        const item = ITEMS[loot.itemId];
-        if (item) {
-          const idx = newInv.findIndex((s) => s.item.id === item.id);
-          if (idx >= 0) {
-            newInv = newInv.map((s, i) => (i === idx ? { ...s, quantity: s.quantity + loot.quantity } : s));
-          } else {
-            newInv = [...newInv, { item, quantity: loot.quantity }];
-          }
-          addLog(`Loot: ${item.name} x${loot.quantity}`, 'loot');
-        }
+        store.addItem(loot.itemId, loot.quantity);
+        const itemName = loot.itemId.replace(/_/g, ' ');
+        addLog(`Loot: ${itemName} x${loot.quantity}`, 'loot');
       }
     });
-
-    let threshold = p.expToNext;
-    while (newExp >= threshold) {
-      newExp -= threshold;
-      newLevel++;
-      const classDef = CLASSES.find((c) => c.id === p.class);
-      if (classDef) {
-        newStats.str += classDef.growth.str;
-        newStats.dex += classDef.growth.dex;
-        newStats.int += classDef.growth.int;
-        newStats.maxHp += classDef.growth.hp;
-        newStats.maxMp += classDef.growth.mp;
-        newStats.hp = newStats.maxHp;
-        newStats.mp = newStats.maxMp;
+    // Elites drop extra consumables/accessories.
+    if (e.isElite) {
+      if (chance(0.35)) {
+        const bonus = pickRandom(['fire_bomb', 'smoke_bomb', 'hp_potion_m', 'lucky_charm', 'iron_ring']);
+        store.addItem(bonus, 1);
+        addLog(`Elite loot: ${bonus.replace(/_/g, ' ')}!`, 'loot');
       }
-      threshold = calcExpForLevel(newLevel);
-      addLog(`LEVEL UP! Now level ${newLevel}!`, 'loot');
     }
 
-    updatePlayer({
-      level: newLevel,
-      exp: newExp,
-      expToNext: threshold,
-      stats: newStats,
-      gold: p.gold + goldGain,
-      inventory: newInv,
-    });
+    const fresh = useGameStore.getState().player!;
+    const goldGain = e.goldReward;
+    useGameStore.getState().updatePlayer({ gold: fresh.gold + goldGain });
+    const levelMsgs = useGameStore.getState().gainExp(e.expReward);
+    levelMsgs.forEach((m) => addLog(m, 'loot'));
 
-    useGameStore.getState().updateQuestProgress('kill', e.id);
-    useGameStore.getState().updateQuestProgress('gold', 'any', p.gold + goldGain);
+    store.updateQuestProgress('kill', e.id);
+    store.updateQuestProgress('kill', 'any');
+    const afterGold = useGameStore.getState().player!;
+    store.updateQuestProgress('gold', 'any', afterGold.gold);
+
+    const isBoss = dungeonRef.current
+      ? dungeonRef.current.rooms[dungeonRef.current.playerPos.y][dungeonRef.current.playerPos.x].type === 'boss'
+      : false;
+    if (isBoss) {
+      const st = useGameStore.getState().stats;
+      useGameStore.setState({ stats: { ...st, bossesKilled: st.bossesKilled + 1 } });
+    }
 
     const d = dungeonRef.current;
     if (d) {
@@ -336,31 +533,51 @@ export function CombatScreen() {
       setDungeon({ ...d, rooms: newRooms });
     }
 
-    const logMsg = `Victory! +${expGain} EXP, +${goldGain} Gold`;
+    const logMsg = `Victory! +${e.expReward} EXP, +${goldGain} Gold`;
     setState((prev) => ({
       ...prev,
-      combatLog: [...prev.combatLog, logMsg],
+      combatLog: [...prev.combatLog, logMsg, ...levelMsgs],
       isOver: true,
       won: true,
     }));
     addLog(logMsg, 'loot');
 
-    setTimeout(() => setScreen('dungeon'), 1500);
-  };
+    // Autosave progress so a refresh doesn't wipe the run.
+    setTimeout(() => {
+      useGameStore.getState().save();
+      setScreen('dungeon');
+    }, 1500);
+  }, [addLog, setDungeon, setScreen]);
 
-  const keyMap = useMemo(() => ({
-    '1': handleAttack,
-    Enter: handleAttack,
-    '2': handleSkill,
-    '3': handleItem,
-    '4': handleRun,
-    Escape: handleRun,
-  }), []);
+  const keyMap = useMemo(
+    () => ({
+      '1': handleAttack,
+      Enter: handleAttack,
+      '2': handleSkill,
+      '3': handleQuickPotion,
+      '4': handleRun,
+      '5': handleGuard,
+      g: handleGuard,
+      Escape: handleRun,
+    }),
+    [handleAttack, handleSkill, handleQuickPotion, handleRun, handleGuard]
+  );
 
   useKeyboard(keyMap);
 
   if (!player || !enemyRef.current) return <div className="text-terminal-dim">No enemy...</div>;
   const enemy = enemyRef.current;
+  const classDef = CLASSES.find((c) => c.id === player.class);
+  const canAffordSkill = classDef ? player.stats.mp >= classDef.skill.mpCost : false;
+
+  const hpPotions = player.inventory.filter((s) => s.item.healAmount && s.quantity > 0);
+  const mpPotions = player.inventory.filter((s) => s.item.mpRestoreAmount && !s.item.healAmount && s.quantity > 0);
+  const bombs = player.inventory.filter((s) => s.item.effect === 'bomb' && s.quantity > 0);
+  const smokes = player.inventory.filter((s) => s.item.effect === 'smoke' && s.quantity > 0);
+  const hpCount = hpPotions.reduce((a, s) => a + s.quantity, 0);
+  const mpCount = mpPotions.reduce((a, s) => a + s.quantity, 0);
+  const bombCount = bombs.reduce((a, s) => a + s.quantity, 0);
+  const smokeCount = smokes.reduce((a, s) => a + s.quantity, 0);
 
   return (
     <div className={`flex flex-col gap-4 animate-fade-in max-w-2xl mx-auto ${state.shaking ? 'animate-[shake_0.3s_ease-in-out]' : ''}`}>
@@ -369,21 +586,40 @@ export function CombatScreen() {
       </h1>
 
       <div className="flex flex-col sm:flex-row gap-4">
-        <Panel title={enemy.name} className="flex-1 relative">
+        <Panel title={enemy.isElite ? `ELITE ${enemy.name}` : enemy.name} className="flex-1 relative">
           <pre className="text-terminal-red text-xs text-center mb-2 whitespace-pre">
             {enemy.ascii}
           </pre>
           <ProgressBar current={state.enemyHp} max={state.enemyMaxHp} label="HP" color="red" />
+          <div className="mt-2 text-[11px] text-center" aria-live="polite">
+            {state.intent ? (
+              <span className="text-terminal-yellow">Intent: {state.intent.name} (~{Math.floor(enemy.attack * state.intent.power)} atk)</span>
+            ) : (
+              <span className="text-terminal-dim">Intent: Attack (~{enemy.attack} atk)</span>
+            )}
+            {state.enemyStatus && (
+              <span className="text-terminal-red ml-2">[{state.enemyStatus.id} {state.enemyStatus.turns}t]</span>
+            )}
+          </div>
         </Panel>
 
         <Panel title={player.name} className="flex-1">
           <div className="text-xs text-terminal-dim mb-2 text-center uppercase">
             {player.class} - Level {player.level}
+            {state.guarding && <span className="text-terminal-cyan ml-2">[GUARDING]</span>}
+            {state.playerStatus && (
+              <span className="text-terminal-red ml-2">[{state.playerStatus.id} {state.playerStatus.turns}t]</span>
+            )}
           </div>
           <div className="space-y-1">
             <ProgressBar current={player.stats.hp} max={player.stats.maxHp} label="HP" color="red" />
             <ProgressBar current={player.stats.mp} max={player.stats.maxMp} label="MP" color="cyan" />
           </div>
+          {classDef && (
+            <div className="mt-2 text-[11px] text-terminal-dim text-center">
+              Skill: {classDef.skill.name} ({classDef.skill.mpCost} MP) — {classDef.skill.description}
+            </div>
+          )}
         </Panel>
       </div>
 
@@ -400,30 +636,58 @@ export function CombatScreen() {
       </div>
 
       <Panel title="Combat Log">
-        <div className="max-h-24 overflow-y-auto text-xs space-y-1">
+        <div className="max-h-24 overflow-y-auto text-xs space-y-1" aria-live="polite">
           {state.combatLog.map((msg, i) => (
             <div key={i} className="text-terminal-dim animate-fade-in">
               <span className="text-terminal-green mr-1">&gt;</span>
               {msg}
             </div>
           ))}
+          {!state.isPlayerTurn && !state.isOver && (
+            <div className="text-terminal-yellow animate-pulse">Enemy acting…</div>
+          )}
         </div>
       </Panel>
 
       {!state.isOver && (
-        <div className="grid grid-cols-2 gap-2">
-          <Button onClick={handleAttack} disabled={!state.isPlayerTurn}>
-            {'[1] Attack'}
-          </Button>
-          <Button onClick={handleSkill} disabled={!state.isPlayerTurn}>
-            {'[2] Skill'}
-          </Button>
-          <Button onClick={handleItem} disabled={!state.isPlayerTurn}>
-            {'[3] Item'}
-          </Button>
-          <Button variant="danger" onClick={handleRun} disabled={!state.isPlayerTurn}>
-            {'[4] Run'}
-          </Button>
+        <div className="flex flex-col gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <Button onClick={handleAttack} disabled={!state.isPlayerTurn}>
+              {'[1] Attack'}
+            </Button>
+            <Button onClick={handleSkill} disabled={!state.isPlayerTurn || !canAffordSkill}>
+              {`[2] Skill${classDef ? ` (${classDef.skill.mpCost})` : ''}`}
+            </Button>
+            <Button onClick={handleQuickPotion} disabled={!state.isPlayerTurn}>
+              {`[3] Potion (${hpCount}H/${mpCount}M)`}
+            </Button>
+            <Button variant="danger" onClick={handleRun} disabled={!state.isPlayerTurn}>
+              {'[4] Run'}
+            </Button>
+            <Button onClick={handleGuard} disabled={!state.isPlayerTurn}>
+              {'[5] Guard'}
+            </Button>
+            <div className="hidden sm:flex items-center justify-center text-[10px] text-terminal-dim">
+              Enter=Atk Esc=Run G=Guard
+            </div>
+          </div>
+          {(bombCount > 0 || smokeCount > 0) && (
+            <div className="flex flex-wrap gap-2">
+              {bombs.map((s) => (
+                <Button key={s.item.id} size="sm" onClick={() => handleUseItemId(s.item.id)} disabled={!state.isPlayerTurn}>
+                  {`Bomb x${s.quantity}`}
+                </Button>
+              ))}
+              {smokes.map((s) => (
+                <Button key={s.item.id} size="sm" variant="ghost" onClick={() => handleUseItemId(s.item.id)} disabled={!state.isPlayerTurn}>
+                  {`Smoke x${s.quantity}`}
+                </Button>
+              ))}
+            </div>
+          )}
+          {!canAffordSkill && classDef && (
+            <div className="text-[11px] text-terminal-yellow text-center">Not enough MP for {classDef.skill.name} — Guard to recover 5 MP.</div>
+          )}
         </div>
       )}
 

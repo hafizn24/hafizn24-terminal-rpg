@@ -15,7 +15,7 @@ export function StatusBar() {
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-terminal-panel border-t border-terminal-border px-4 py-2 z-50">
-      <div className="max-w-4xl mx-auto flex flex-wrap items-center gap-x-6 gap-y-1 text-xs font-mono">
+      <div className="max-w-4xl mx-auto flex flex-nowrap items-center gap-x-6 gap-y-1 text-xs font-mono overflow-x-auto whitespace-nowrap">
         <span className={classColors[player.class] || 'text-terminal-green'}>
           {player.name.toUpperCase()}
         </span>

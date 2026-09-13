@@ -3,19 +3,6 @@ import { useUIStore } from '../../game/store/uiStore';
 import { Button } from '../ui/Button';
 import { Panel } from '../ui/Panel';
 
-const TOWN_ART = `
-    +---------------------------+
-    |  [===]  [===]  [===]     |
-    |  | B |  | P |  | M |     |
-    |  | S |  | O |  | A |     |
-    |  | M |  | T |  | G |     |
-    |  [===]  [===]  [===]     |
-    |       +-------+          |
-    |       |  INN  |          |
-    |       +-------+          |
-    +---------------------------+
-`;
-
 export function TownScreen() {
   const player = useGameStore((s) => s.player);
   const dungeon = useGameStore((s) => s.dungeon);
@@ -24,6 +11,8 @@ export function TownScreen() {
   const setSelectedShop = useGameStore((s) => s.setSelectedShop);
   const save = useGameStore((s) => s.save);
   const updatePlayer = useGameStore((s) => s.updatePlayer);
+  const lastSave = useGameStore((s) => s.lastSave);
+  const stats = useGameStore((s) => s.stats);
   const addLog = useUIStore((s) => s.addLog);
 
   if (!player) return null;
@@ -36,6 +25,23 @@ export function TownScreen() {
   };
 
   const handleEnterDungeon = () => {
+    // Preserve an in-progress dungeon so fleeing doesn't wipe the run.
+    // Only generate a fresh floor when there is no dungeon or it belongs to another floor.
+    const existing = useGameStore.getState().dungeon;
+    if (existing && existing.floor === player.floor) {
+      addLog(`Resuming dungeon floor ${player.floor}...`, 'system');
+      setScreen('dungeon');
+      return;
+    }
+    if (existing && existing.floor !== player.floor) {
+      const ok = window.confirm(
+        `Start floor ${player.floor}? This discards your saved floor ${existing.floor} position.`
+      );
+      if (!ok) {
+        setScreen('dungeon');
+        return;
+      }
+    }
     addLog(`Entering dungeon floor ${player.floor}...`, 'system');
     setDungeon(null);
     setScreen('dungeon');
@@ -43,7 +49,7 @@ export function TownScreen() {
 
   return (
     <div className="flex flex-col items-center gap-6 animate-fade-in">
-      <pre className="text-terminal-green text-[10px] leading-tight">{TOWN_ART}</pre>
+      <div className="text-terminal-green text-xs tracking-widest">[ TOWN OF HAVEN ]</div>
 
       <h1 className="text-terminal-cyan text-xl tracking-widest uppercase">
         {'=== Town of Haven ==='}
@@ -55,13 +61,13 @@ export function TownScreen() {
       </p>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full max-w-lg">
-        <Button onClick={() => { setSelectedShop('blacksmith'); setScreen('shop'); }}>
+        <Button onClick={() => { setSelectedShop('blacksmith', 'town'); setScreen('shop'); }}>
           {'[BSM] Blacksmith'}
         </Button>
-        <Button onClick={() => { setSelectedShop('potion_shop'); setScreen('shop'); }}>
+        <Button onClick={() => { setSelectedShop('potion_shop', 'town'); setScreen('shop'); }}>
           {'[POT] Potions'}
         </Button>
-        <Button onClick={() => { setSelectedShop('magic_shop'); setScreen('shop'); }}>
+        <Button onClick={() => { setSelectedShop('magic_shop', 'town'); setScreen('shop'); }}>
           {'[MAG] Magic Shop'}
         </Button>
         <Button onClick={() => setScreen('inventory')}>
@@ -74,17 +80,33 @@ export function TownScreen() {
           {'[GLD] Guild Board'}
         </Button>
         <Button variant="danger" onClick={handleEnterDungeon} glow>
-          {'[DGN] Enter Dungeon'}
+          {dungeon && dungeon.floor === player.floor ? '[DGN] Resume Dungeon' : '[DGN] Enter Dungeon'}
         </Button>
       </div>
 
-      {dungeon && (
+      {(dungeon || lastSave) && (
         <Panel title="Last Run" className="w-full max-w-md">
           <div className="text-xs space-y-1">
+            {dungeon && (
+              <div className="flex justify-between">
+                <span className="text-terminal-dim">Floor Reached</span>
+                <span className="text-terminal-yellow">{dungeon.floor}</span>
+              </div>
+            )}
             <div className="flex justify-between">
-              <span className="text-terminal-dim">Floor Reached</span>
-              <span className="text-terminal-yellow">{dungeon.floor}</span>
+              <span className="text-terminal-dim">Best Floor</span>
+              <span className="text-terminal-yellow">{Math.max(stats.bestFloor, player.floor)}</span>
             </div>
+            <div className="flex justify-between">
+              <span className="text-terminal-dim">Bosses Slain</span>
+              <span className="text-terminal-yellow">{stats.bossesKilled}</span>
+            </div>
+            {lastSave && (
+              <div className="flex justify-between">
+                <span className="text-terminal-dim">Last Saved</span>
+                <span className="text-terminal-dim">{new Date(lastSave).toLocaleTimeString()}</span>
+              </div>
+            )}
           </div>
         </Panel>
       )}

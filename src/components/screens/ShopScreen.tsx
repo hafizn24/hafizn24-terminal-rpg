@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useGameStore } from '../../game/store/gameStore';
+import type { ShopType } from '../../game/store/gameStore';
 import { useUIStore } from '../../game/store/uiStore';
 import { Button } from '../ui/Button';
 import { Panel } from '../ui/Panel';
@@ -8,7 +9,6 @@ import { getRarityColor } from '../../utils/rng';
 import type { Item } from '../../types/game';
 
 type ShopMode = 'buy' | 'sell';
-type ShopType = 'blacksmith' | 'potion_shop' | 'magic_shop';
 
 const SHOP_NAMES: Record<ShopType, string> = {
   blacksmith: 'Blacksmith',
@@ -22,8 +22,10 @@ const SHOP_ICONS: Record<ShopType, string> = {
   magic_shop: 'M',
 };
 
+const ACCESSORY_IDS = new Set(['lucky_charm', 'iron_ring', 'sage_amulet']);
+
 export function ShopScreen() {
-  const { player, updatePlayer, setScreen, selectedShop } = useGameStore();
+  const { player, updatePlayer, setScreen, selectedShop, shopReturn } = useGameStore();
   const addLog = useUIStore((s) => s.addLog);
   const [mode, setMode] = useState<ShopMode>('buy');
   const shopType: ShopType = selectedShop;
@@ -36,6 +38,8 @@ export function ShopScreen() {
   const sellableItems = player.inventory.filter(
     (s) => s.item.type !== 'key'
   );
+
+  const backLabel = shopReturn === 'dungeon' ? '[Back to Dungeon]' : '[Back to Town]';
 
   const handleBuy = (item: Item) => {
     if (player.gold < item.price) {
@@ -50,7 +54,8 @@ export function ShopScreen() {
         : [...player.inventory, { item, quantity: 1 }];
 
     updatePlayer({ gold: player.gold - item.price, inventory: newInv });
-    addLog(`Bought ${item.name} for ${item.price} gold.`, 'loot');
+    useGameStore.getState().save();
+    addLog(`Bought ${item.name} for ${item.price} gold. (Autosaved)`, 'loot');
   };
 
   const handleSell = (itemId: string) => {
@@ -67,11 +72,13 @@ export function ShopScreen() {
     if (slot.quantity <= 1) {
       if (newEquipment.weapon?.id === itemId) newEquipment.weapon = null;
       if (newEquipment.armor?.id === itemId) newEquipment.armor = null;
+      if (newEquipment.accessory?.id === itemId) newEquipment.accessory = null;
     }
 
     const newGold = player.gold + sellPrice;
     updatePlayer({ gold: newGold, inventory: newInv, equipment: newEquipment });
     useGameStore.getState().updateQuestProgress('gold', 'any', newGold);
+    useGameStore.getState().save();
     addLog(`Sold ${slot.item.name} for ${sellPrice} gold.`, 'loot');
   };
 
@@ -81,10 +88,16 @@ export function ShopScreen() {
         <h1 className="text-terminal-cyan text-lg tracking-widest uppercase">
           [{SHOP_ICONS[shopType]}] {SHOP_NAMES[shopType]}
         </h1>
-        <Button variant="ghost" size="sm" onClick={() => setScreen('town')}>
-          {'[Back to Town]'}
+        <Button variant="ghost" size="sm" onClick={() => setScreen(shopReturn)}>
+          {backLabel}
         </Button>
       </div>
+
+      {shopType === 'magic_shop' && (
+        <div className="text-[11px] text-terminal-dim">
+          Accessories equip to the Accessory slot via Inventory. {ACCESSORY_IDS.size} charms in stock.
+        </div>
+      )}
 
       <div className="flex items-center gap-4 text-xs">
         <span className="text-terminal-yellow">Gold: {player.gold}</span>

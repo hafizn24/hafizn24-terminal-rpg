@@ -1,7 +1,7 @@
 import type { Room, RoomType, DungeonState, Enemy, Item } from '../../types/game';
 import { ENEMIES, BOSS_ENEMIES } from '../data/enemies';
 import { ITEMS, SHOP_STOCK } from '../data/items';
-import { randomInt, pickRandom } from '../../utils/rng';
+import { randomInt, pickRandom, chance } from '../../utils/rng';
 
 const GRID_SIZE = 5;
 
@@ -16,7 +16,6 @@ export function generateDungeon(floor: number): DungeonState {
         explored: false,
         x,
         y,
-        connected: [],
       };
     }
   }
@@ -40,18 +39,32 @@ export function generateDungeon(floor: number): DungeonState {
       if (x === 0 && y === 0) continue;
       if (x === GRID_SIZE - 1 && y === GRID_SIZE - 1) continue;
       if (isBossFloor && x === GRID_SIZE - 1 && y === GRID_SIZE - 2) continue;
-      rooms[y][x].type = pickRandom(roomTypes);
+      let t = pickRandom(roomTypes);
+      // Promote some monsters to elites on floor 2+
+      if (t === 'monster' && floor >= 2 && chance(0.12)) t = 'elite';
+      rooms[y][x].type = t;
     }
+  }
+
+  // Guarantee one shrine per floor by converting a random empty room.
+  const empties: Room[] = [];
+  for (let y = 0; y < GRID_SIZE; y++) {
+    for (let x = 0; x < GRID_SIZE; x++) {
+      if (rooms[y][x].type === 'empty') empties.push(rooms[y][x]);
+    }
+  }
+  if (empties.length > 0) {
+    pickRandom(empties).type = 'shrine';
   }
 
   for (let y = 0; y < GRID_SIZE; y++) {
     for (let x = 0; x < GRID_SIZE; x++) {
       const room = rooms[y][x];
 
-      if (room.type === 'monster' || room.type === 'boss') {
+      if (room.type === 'monster' || room.type === 'boss' || room.type === 'elite') {
         const enemyPool = room.type === 'boss' ? getBossesForFloor(floor) : getEnemiesForFloor(floor);
         const enemy = pickRandom(enemyPool);
-        room.enemy = scaleEnemy(enemy, floor);
+        room.enemy = scaleEnemy(enemy, floor, room.type === 'elite');
       }
 
       if (room.type === 'treasure') {
@@ -69,8 +82,6 @@ export function generateDungeon(floor: number): DungeonState {
     }
   }
 
-  connectRooms(rooms);
-
   return {
     floor,
     rooms,
@@ -80,7 +91,8 @@ export function generateDungeon(floor: number): DungeonState {
 }
 
 function getEnemiesForFloor(floor: number) {
-  const maxIndex = Math.min(ENEMIES.length, Math.max(1, Math.ceil(floor / 2)));
+  // Ensure early floors see variety instead of slime-only.
+  const maxIndex = Math.min(ENEMIES.length, Math.max(3, Math.ceil(floor / 2) + 1));
   return ENEMIES.slice(0, maxIndex);
 }
 
@@ -90,19 +102,24 @@ function getBossesForFloor(floor: number) {
   return BOSS_ENEMIES.slice(0, bossIndex + 1);
 }
 
-function scaleEnemy(enemy: Enemy, floor: number): Enemy {
+function scaleEnemy(enemy: Enemy, floor: number, isElite = false): Enemy {
   const scaling = 1 + (floor - 1) * 0.15;
+  const eliteHp = isElite ? 1.5 : 1;
+  const eliteAtk = isElite ? 1.3 : 1;
+  const eliteReward = isElite ? 2 : 1;
   return {
     ...enemy,
+    name: isElite ? `Elite ${enemy.name}` : enemy.name,
+    isElite,
     stats: {
       ...enemy.stats,
-      hp: Math.floor(enemy.stats.hp * scaling),
-      maxHp: Math.floor(enemy.stats.maxHp * scaling),
+      hp: Math.floor(enemy.stats.hp * scaling * eliteHp),
+      maxHp: Math.floor(enemy.stats.maxHp * scaling * eliteHp),
     },
-    attack: Math.floor(enemy.attack * scaling),
+    attack: Math.floor(enemy.attack * scaling * eliteAtk),
     defense: Math.floor(enemy.defense * scaling),
-    expReward: Math.floor(enemy.expReward * scaling),
-    goldReward: Math.floor(enemy.goldReward * scaling),
+    expReward: Math.floor(enemy.expReward * scaling * eliteReward),
+    goldReward: Math.floor(enemy.goldReward * scaling * eliteReward),
   };
 }
 
@@ -110,6 +127,7 @@ function getRandomLoot(floor: number): Item {
   const allItems = Object.values(ITEMS);
   const lootPool = allItems.filter((item) => {
     if (item.type === 'potion') return true;
+    if (item.effect) return true;
     if (item.rarity === 'common') return true;
     if (item.rarity === 'uncommon' && floor >= 2) return true;
     if (item.rarity === 'rare' && floor >= 4) return true;
@@ -117,19 +135,6 @@ function getRandomLoot(floor: number): Item {
     return false;
   });
   return pickRandom(lootPool.length > 0 ? lootPool : [ITEMS.slime_gel]);
-}
-
-function connectRooms(rooms: Room[][]) {
-  for (let y = 0; y < GRID_SIZE; y++) {
-    for (let x = 0; x < GRID_SIZE; x++) {
-      const room = rooms[y][x];
-      room.connected = [];
-      if (x > 0) room.connected.push(0);
-      if (x < GRID_SIZE - 1) room.connected.push(1);
-      if (y > 0) room.connected.push(2);
-      if (y < GRID_SIZE - 1) room.connected.push(3);
-    }
-  }
 }
 
 export function getAdjacentRooms(dungeon: DungeonState) {

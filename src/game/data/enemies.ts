@@ -65,11 +65,11 @@ export const ENEMIES: Enemy[] = [
     id: 'dark_mage',
     name: 'Dark Mage',
     ascii: `
-   .===.
-   | ? |
-   | @ |
-   | @ |
-  /@   @\\`,
+    .===.
+    | ? |
+    | @ |
+    | @ |
+   /@   @\\`,
     stats: { str: 6, dex: 6, int: 14, hp: 40, maxHp: 40, mp: 30, maxMp: 30 },
     attack: 8,
     defense: 4,
@@ -82,7 +82,7 @@ export const ENEMIES: Enemy[] = [
     ],
     skills: [
       { name: 'Shadow Bolt', power: 2.0, chance: 0.4 },
-      { name: 'Drain Life', power: 1.0, chance: 0.2 },
+      { name: 'Drain Life', power: 1.0, chance: 0.2, status: { id: 'poison', dmg: 4, turns: 2 } },
     ],
   },
   {
@@ -137,12 +137,12 @@ export const ENEMIES: Enemy[] = [
     id: 'wraith',
     name: 'Wraith',
     ascii: `
-   .-===-.
-   | ~~~ |
-   |  O  |
-   | ~~~ |
-  / ~~~ ~ \\
-   '-----'`,
+    .-===-.
+    | ~~~ |
+    |  O  |
+    | ~~~ |
+   / ~~~ ~ \\
+    '-----'`,
     stats: { str: 10, dex: 12, int: 16, hp: 60, maxHp: 60, mp: 40, maxMp: 40 },
     attack: 12,
     defense: 3,
@@ -154,7 +154,7 @@ export const ENEMIES: Enemy[] = [
       { itemId: 'mp_potion', chance: 0.4, quantity: 2 },
     ],
     skills: [
-      { name: 'Life Drain', power: 1.8, chance: 0.4 },
+      { name: 'Life Drain', power: 1.8, chance: 0.4, status: { id: 'poison', dmg: 5, turns: 2 } },
       { name: 'Soul Rend', power: 2.2, chance: 0.25 },
     ],
   },
@@ -162,13 +162,13 @@ export const ENEMIES: Enemy[] = [
     id: 'flame_elemental',
     name: 'Flame Elemental',
     ascii: `
-     /\\
-    /  \\
-   / @@ \\
-  |  @@  |
-   \\ @@ /
-    \\  /
-     \\/`,
+      /\\
+     /  \\
+    / @@ \\
+   |  @@  |
+    \\ @@ /
+     \\  /
+      \\/`,
     stats: { str: 12, dex: 8, int: 20, hp: 50, maxHp: 50, mp: 50, maxMp: 50 },
     attack: 10,
     defense: 5,
@@ -180,7 +180,7 @@ export const ENEMIES: Enemy[] = [
       { itemId: 'flame_blade', chance: 0.03, quantity: 1 },
     ],
     skills: [
-      { name: 'Fireball', power: 2.5, chance: 0.45 },
+      { name: 'Fireball', power: 2.5, chance: 0.45, status: { id: 'burn', dmg: 6, turns: 2 } },
       { name: 'Flame Wave', power: 1.8, chance: 0.3 },
     ],
   },
