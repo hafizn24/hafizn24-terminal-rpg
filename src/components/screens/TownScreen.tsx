@@ -2,6 +2,7 @@ import { useGameStore } from '../../game/store/gameStore';
 import { useUIStore } from '../../game/store/uiStore';
 import { Button } from '../ui/Button';
 import { Panel } from '../ui/Panel';
+import { StatAllocationPanel } from '../ui/StatAllocationPanel';
 
 export function TownScreen() {
   const player = useGameStore((s) => s.player);
@@ -82,6 +83,10 @@ export function TownScreen() {
         <Button variant="danger" onClick={handleEnterDungeon} glow>
           {dungeon && dungeon.floor === player.floor ? '[DGN] Resume Dungeon' : '[DGN] Enter Dungeon'}
         </Button>
+      </div>
+
+      <div className="w-full max-w-md">
+        <StatAllocationPanel />
       </div>
 
       {(dungeon || lastSave) && (

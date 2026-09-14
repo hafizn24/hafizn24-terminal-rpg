@@ -91,6 +91,8 @@ export interface Player {
   inventory: InventorySlot[];
   equipment: Equipment;
   floor: number;
+  /** Unspent level-up points the player can distribute to STR/DEX/INT/HP/MP. */
+  statPoints: number;
 }
 
 export interface Enemy {

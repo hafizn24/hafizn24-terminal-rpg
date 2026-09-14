@@ -35,9 +35,18 @@ export function loadGame(): SaveData | null {
     const parsed = JSON.parse(json) as Partial<SaveData>;
     // Basic validation + v0 -> v1 migration
     if (!parsed.player || typeof parsed.player.name !== 'string') return null;
+    // Backfill statPoints for saves predating manual distribution.
+    const lvl = parsed.player.level ?? 1;
+    const player = {
+      ...parsed.player,
+      statPoints:
+        typeof (parsed.player as Partial<import('../types/game').Player>).statPoints === 'number'
+          ? (parsed.player as Partial<import('../types/game').Player>).statPoints!
+          : Math.max(0, lvl - 1) * 3,
+    } as SaveData['player'];
     return {
       version: parsed.version ?? 0,
-      player: parsed.player as SaveData['player'],
+      player,
       dungeon: parsed.dungeon ?? null,
       quests: Array.isArray(parsed.quests) ? parsed.quests : [],
       lastSave: typeof parsed.lastSave === 'string' ? parsed.lastSave : new Date().toISOString(),
