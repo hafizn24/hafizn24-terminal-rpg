@@ -1,17 +1,20 @@
 import type { Enemy } from '../../types/game';
 
+// Sprites use block/gradient shading (░▒▓█ ▄▀) for body mass over a
+// plain outline, so shapes read at a glance. Elite/boss tiers reuse
+// these base sprites with overlays from `ascii.ts` — no redraws needed.
+
 export const ENEMIES: Enemy[] = [
   {
     id: 'slime',
     name: 'Green Slime',
     ascii: `
       .-~~~-.
-     /  . .  \\
-    |  (o)(o) |
-     \\   __  /
-      | '--' |
-     /|    |\\
-    (_|    |_)`,
+     /░░░░░░░\\
+    │░(o)░(o)░│
+     \\░▓▓▓▓▓░/
+     ▓▓▓▓▓▓▓▓▓
+    ▄▓▓▓▓▓▓▓▓▄`,
     stats: { str: 4, dex: 2, int: 1, hp: 20, maxHp: 20, mp: 0, maxMp: 0 },
     attack: 5,
     defense: 1,
@@ -28,12 +31,12 @@ export const ENEMIES: Enemy[] = [
     name: 'Goblin',
     ascii: `
       /\\   /\\
-     /  \\_/  \\
-    |  (^_^)  |
-    |  /|\\/|  |
-     \\  \\/  /
-     /|    |\\
-    (_|    |_)`,
+     /░░\\_/░░\\
+    │░(^_^)░░░│
+    │░/█\\/|█\\░│
+     \\░\\▓▓/░/
+     ▄▓▓▓▓▓▓▄
+    (_▓▓▓▓▓▓_)`,
     stats: { str: 8, dex: 6, int: 3, hp: 35, maxHp: 35, mp: 0, maxMp: 0 },
     attack: 10,
     defense: 3,
@@ -51,13 +54,13 @@ export const ENEMIES: Enemy[] = [
     name: 'Skeleton',
     ascii: `
      .---.
-     |X X|
-     | O |
-    _|___|_
-   | | # | |
-   |_|###|_|
-     | # |
-    _|   |_`,
+     │X░X│
+     │░O░│
+    _│███│_
+   │▓│░█░│▓│
+   │█▓███▓█│
+     │▓█▓│
+    _│███│_`,
     stats: { str: 10, dex: 8, int: 2, hp: 45, maxHp: 45, mp: 0, maxMp: 0 },
     attack: 14,
     defense: 5,
@@ -75,13 +78,13 @@ export const ENEMIES: Enemy[] = [
     name: 'Dark Mage',
     ascii: `
         /\\
-       /  \\
-      | (*)|
-      |/|\\|
-      /| |\\
-     / | | \\
-    |  | |  |
-     \\_| |_/`,
+       /░░\\
+      │░(*)│
+      │/█\\│
+      /█░█\\
+     /░█░█░\\
+    │▓▓█░█▓▓│
+     \\_▓█▓_/`,
     stats: { str: 6, dex: 6, int: 14, hp: 40, maxHp: 40, mp: 30, maxMp: 30 },
     attack: 8,
     defense: 4,
@@ -101,14 +104,14 @@ export const ENEMIES: Enemy[] = [
     id: 'orc',
     name: 'Orc Warrior',
     ascii: `
-    .=======.
-    |(o) (o)|
-    |  \\_/  |
-    | /|||\\ |
-    |/ \\_/ \\|
-    |  | |  |
-   /|  | |  |\\
-  (_|  | |  |_)`,
+    .═══════.
+    │(o)░(o)│
+    │▓▓\\_/▓▓│
+    │▓/███\\▓│
+    │▓\\_█_/▓│
+    │▓▓█░█▓▓│
+   /│▓▓█░█▓▓│\\
+  (_▓▓█░█▓▓▓_)`,
     stats: { str: 16, dex: 6, int: 4, hp: 70, maxHp: 70, mp: 0, maxMp: 0 },
     attack: 20,
     defense: 8,
@@ -129,10 +132,10 @@ export const ENEMIES: Enemy[] = [
     name: 'Shadow Wolf',
     ascii: `
     /\\_/\\  /\\_/\\
-   ( o.o )( o.o )
-    > ^ <  > ^ <
-   /|   ||   |\\
-  (_|   ||   |_)`,
+   (░o.o░)(░o.o░)
+    >░^░<░░>░^░<
+   /│▓▓▓││▓▓▓│\\
+  (_▓▓▓▓││▓▓▓▓_)`,
     stats: { str: 14, dex: 18, int: 5, hp: 55, maxHp: 55, mp: 10, maxMp: 10 },
     attack: 18,
     defense: 6,
@@ -153,12 +156,12 @@ export const ENEMIES: Enemy[] = [
     name: 'Wraith',
     ascii: `
      .-~~~-.
-     | ~~~ |
-     |(o o)|
-     | \\_/ |
-     | ~~~ |
-    /|~~~~~|\\
-   (_|~~~~~|_)`,
+     │░≈░≈░│
+     │(o░o)│
+     │░\\_/░│
+     │░≈░≈░│
+    /│▓≈▓≈▓│\\
+   (_▓≈▓≈▓≈▓_)`,
     stats: { str: 10, dex: 12, int: 16, hp: 60, maxHp: 60, mp: 40, maxMp: 40 },
     attack: 12,
     defense: 3,
@@ -178,13 +181,13 @@ export const ENEMIES: Enemy[] = [
     id: 'flame_elemental',
     name: 'Flame Elemental',
     ascii: `
-       (  )
-      ((  ))
-     (( @@ ))
-    |  (@@)  |
-     \\ (@@) /
-      \\ || /
-       \\||/
+       (░░)
+      ((▓▓))
+     ((▓██▓))
+    │░(▓██)░│
+     \\░(██)░/
+      \\░▓▓░/
+       \\▓▓/
         \\/`,
     stats: { str: 12, dex: 8, int: 20, hp: 50, maxHp: 50, mp: 50, maxMp: 50 },
     attack: 10,
@@ -206,12 +209,12 @@ export const ENEMIES: Enemy[] = [
     name: 'Dragon Wyrmling',
     ascii: `
     /\\      /\\
-   /  \\/\\/  \\
-  |  (o)(o)  |
-  |  |    |  |
-   \\ |    | /
-    \\|____|/
-     /    \\`,
+   /░░\\/\\/░░\\
+  │░▓(o)(o)▓░│
+  │░▓│▓▓│▓░│
+   \\░│▓▓│░/
+    \\│▓▓│/
+    ▄│██│▄`,
     stats: { str: 22, dex: 14, int: 12, hp: 100, maxHp: 100, mp: 20, maxMp: 20 },
     attack: 28,
     defense: 12,
@@ -231,13 +234,13 @@ export const ENEMIES: Enemy[] = [
     id: 'demon_knight',
     name: 'Demon Knight',
     ascii: `
-    .=======.
-    |\\<>  /|
-    |  \\/  |
-    |  /\\  |
-    | [__] |
-   /| /  \\ |\\
-  (_|/    \\|_)`,
+    .═══════.
+    │\\<>░▓/│
+    │▓▓\\/▓▓│
+    │▓▓/\\▓▓│
+    │▓[██]▓│
+   /│▓/░░\\▓│\\
+  (_▓/░▓▓\\▓_)`,
     stats: { str: 26, dex: 16, int: 10, hp: 120, maxHp: 120, mp: 30, maxMp: 30 },
     attack: 32,
     defense: 15,
@@ -260,13 +263,13 @@ export const BOSS_ENEMIES: Enemy[] = [
     id: 'goblin_king',
     name: 'Goblin King',
     ascii: `
-      .-\"\"\"-.
+      .-"""-.
      /_/_\\_\\
-    | (o o) |
-    |  \\_/  |
-    | _|||_ |
-   /|/ \\_/ \\|\\
-  (_|       |_)`,
+    │░(o░o)░│
+    │▓▓\\_/▓▓│
+    │▓_███_▓│
+   /│▓\\_█_/▓│\\
+  (_▓▓▓█▓▓▓▓_)`,
     stats: { str: 14, dex: 10, int: 6, hp: 120, maxHp: 120, mp: 20, maxMp: 20 },
     attack: 22,
     defense: 10,
@@ -287,12 +290,12 @@ export const BOSS_ENEMIES: Enemy[] = [
     name: 'Necromancer',
     ascii: `
       .-~~~-.
-     /  X X  \\
-    |   ~~~   |
-    |  (___)  |
-    |  ~~~~~  |
-   /| ~~~~~ |\\
-  (_|~~~~~~~|_)`,
+     /░░X░X░░\\
+    │░░░≈≈≈░░│
+    │░▓(___)▓│
+    │░▓≈≈≈▓░│
+   /│░▓≈≈≈▓░│\\
+  (_│▓▓▓▓▓▓│_)`,
     stats: { str: 8, dex: 8, int: 20, hp: 100, maxHp: 100, mp: 60, maxMp: 60 },
     attack: 12,
     defense: 6,
@@ -314,12 +317,12 @@ export const BOSS_ENEMIES: Enemy[] = [
     name: 'Dragon Lord',
     ascii: `
     /\\        /\\
-   /  \\/\\/\\/  \\
-  |  (o)(o)(o) |
-  |  |      |  |
-   \\ |  __  | /
-    \\| |  | |/
-     \\|____|/`,
+   /░░\\/\\/\\/░░\\
+  │░▓(o)(o)(o)│
+  │░▓│▓▓▓▓│▓░│
+   \\░│▓██▓│░/
+    \\│▓██▓│/
+    ▄│████│▄`,
     stats: { str: 30, dex: 18, int: 16, hp: 250, maxHp: 250, mp: 40, maxMp: 40 },
     attack: 38,
     defense: 18,
@@ -341,12 +344,12 @@ export const BOSS_ENEMIES: Enemy[] = [
     name: 'Demon King',
     ascii: `
    _/\\_______/\\_
-  /  \\  |  /  \\
-  |   \\_|_/   |
-  |   /|||\\   |
-  |  / ||| \\  |
-   \\/  |||  \\/
-      /|||\\`,
+  /░░\\▓│▓/░░\\
+  │░▓\\_│_/▓░│
+  │░▓/███\\▓░│
+  │░/▓███▓\\░│
+   \\/░▓█▓░\\/
+     ▄▓█▓▄`,
     stats: { str: 35, dex: 20, int: 25, hp: 400, maxHp: 400, mp: 80, maxMp: 80 },
     attack: 45,
     defense: 22,

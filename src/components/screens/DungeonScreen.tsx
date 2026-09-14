@@ -5,6 +5,7 @@ import { Button } from '../ui/Button';
 import { Panel } from '../ui/Panel';
 import { LogPanel } from '../terminal/LogPanel';
 import { generateDungeon, getAdjacentRooms } from '../../game/systems/dungeonGenerator';
+import { getFloorTheme } from '../../game/data/ascii';
 import { useKeyboard } from '../../hooks/useKeyboard';
 import type { Room } from '../../types/game';
 
@@ -183,6 +184,7 @@ export function DungeonScreen() {
   if (!player || !dungeon) return <div className="text-terminal-dim">Loading...</div>;
 
   const currentRoom: Room = dungeon.rooms[dungeon.playerPos.y][dungeon.playerPos.x];
+  const theme = getFloorTheme(dungeon.floor);
   const isBossFloor = dungeon.floor % 5 === 0;
   const exploredCount = dungeon.rooms.flat().filter((r) => r.explored).length;
   const totalRooms = dungeon.gridSize * dungeon.gridSize;
@@ -190,19 +192,21 @@ export function DungeonScreen() {
   const isAdjacent = (x: number, y: number) =>
     Math.abs(x - dungeon.playerPos.x) + Math.abs(y - dungeon.playerPos.y) === 1;
 
+  // Monospace-safe glyphs only (geometric shapes + box shading, no emoji/CJK).
+  // Unexplored tiles use fog shading: ░ dim when distant, ? bright when reachable.
   const roomTypeSymbol = (room: Room) => {
-    if (room.x === dungeon.playerPos.x && room.y === dungeon.playerPos.y) return '@';
-    if (!room.explored) return '?';
+    if (room.x === dungeon.playerPos.x && room.y === dungeon.playerPos.y) return '◎';
+    if (!room.explored) return isAdjacent(room.x, room.y) ? '?' : '░';
     switch (room.type) {
       case 'empty': return '·';
-      case 'monster': return 'M';
-      case 'elite': return 'E';
+      case 'monster': return '◆';
+      case 'elite': return '◈';
       case 'shrine': return '+';
-      case 'treasure': return 'T';
-      case 'trap': return '^';
+      case 'treasure': return '●';
+      case 'trap': return '×';
       case 'shop': return '$';
-      case 'stairs': return '>';
-      case 'boss': return 'B';
+      case 'stairs': return '▼';
+      case 'boss': return '▲';
       case 'start': return '·';
       default: return '?';
     }
@@ -212,19 +216,20 @@ export function DungeonScreen() {
     const isPlayer = room.x === dungeon.playerPos.x && room.y === dungeon.playerPos.y;
     if (isPlayer) return 'text-terminal-cyan bg-terminal-cyan/20 border-terminal-cyan shadow-[0_0_8px_rgba(0,255,255,0.35)] animate-pulse-glow';
     if (!room.explored) {
+      // Fog: dim shading when distant, bright + inviting when reachable.
       return isAdjacent(room.x, room.y)
-        ? 'text-terminal-green bg-terminal-panel border-terminal-green/60 hover:bg-terminal-green/10 cursor-pointer'
-        : 'text-terminal-dim/40 bg-terminal-bg border-terminal-dim/20';
+        ? 'text-terminal-green bg-terminal-panel border-terminal-green/60 hover:bg-terminal-green/10 cursor-pointer font-bold'
+        : 'text-terminal-dim/30 bg-terminal-bg border-terminal-dim/20';
     }
     const base = 'bg-terminal-panel ';
     switch (room.type) {
-      case 'monster': return `${base}text-terminal-red border-terminal-red/40`;
-      case 'elite': return `${base}text-terminal-yellow border-terminal-yellow/60 font-bold`;
-      case 'shrine': return `${base}text-terminal-cyan border-terminal-cyan/50`;
-      case 'treasure': return `${base}text-terminal-yellow border-terminal-yellow/40`;
+      case 'monster': return `${base}text-terminal-red border-terminal-red/40 font-bold`;
+      case 'elite': return `${base}text-terminal-yellow border-terminal-yellow/60 font-bold shadow-[0_0_6px_rgba(255,215,0,0.2)]`;
+      case 'shrine': return `${base}text-terminal-cyan border-terminal-cyan/50 font-bold`;
+      case 'treasure': return `${base}text-terminal-yellow border-terminal-yellow/40 font-bold`;
       case 'trap': return `${base}text-terminal-red/70 border-terminal-red/30 line-through`;
       case 'shop': return `${base}text-terminal-green border-terminal-green/50 font-bold`;
-      case 'stairs': return `${base}text-terminal-cyan border-terminal-cyan font-bold`;
+      case 'stairs': return `${base}text-terminal-cyan border-terminal-cyan font-bold shadow-[0_0_6px_rgba(0,255,255,0.25)]`;
       case 'boss': return 'bg-terminal-red/10 text-terminal-red border-terminal-red font-bold shadow-[0_0_8px_rgba(255,0,64,0.3)]';
       default: return `${base}text-terminal-dim border-terminal-dim/30`;
     }
@@ -251,8 +256,8 @@ export function DungeonScreen() {
   return (
     <div className="flex flex-col gap-4 animate-fade-in">
       <div className="flex items-center justify-between">
-        <h1 className={`text-lg tracking-widest ${isBossFloor ? 'text-terminal-red animate-pulse-glow' : 'text-terminal-cyan'}`}>
-          {isBossFloor ? `FLOOR ${dungeon.floor} — BOSS` : `FLOOR ${dungeon.floor}`}
+        <h1 className={`text-lg tracking-widest ${theme.labelClass}`}>
+          {theme.label}
         </h1>
         <span className="text-terminal-dim text-[11px]">
           Explored {exploredCount}/{totalRooms}
@@ -264,7 +269,7 @@ export function DungeonScreen() {
 
       <div className="flex flex-col lg:flex-row gap-4">
         <Panel title={isBossFloor ? 'Dungeon Map — Boss Floor' : 'Dungeon Map'} className={`flex-shrink-0 ${isBossFloor ? 'border-terminal-red/50' : ''}`}>
-          <div className="flex flex-col items-center gap-1 font-mono p-2 bg-terminal-bg/50 border border-terminal-dim/20">
+          <div className={`flex flex-col items-center gap-1 font-mono p-2 bg-terminal-bg/50 border ${theme.frame}`}>
             {dungeon.rooms.map((row, y) => (
               <div key={y} className="flex gap-1">
                 {row.map((room, x) => (
@@ -287,16 +292,16 @@ export function DungeonScreen() {
           </div>
           <div className="mt-2 text-[10px] text-terminal-dim">You are here: ({dungeon.playerPos.x},{dungeon.playerPos.y}) — {roomDescription(currentRoom)}</div>
           <div className="mt-2 text-[10px] text-terminal-dim flex flex-wrap gap-x-3 gap-y-1">
-            <span><span className="text-terminal-cyan font-bold">@</span> You</span>
-            <span><span className="text-terminal-red">M</span> Monster</span>
-            <span><span className="text-terminal-yellow font-bold">E</span> Elite</span>
-            <span><span className="text-terminal-cyan">+</span> Shrine</span>
-            <span><span className="text-terminal-yellow">T</span> Treasure</span>
-            <span><span className="text-terminal-red">^</span> Trap</span>
+            <span><span className="text-terminal-cyan font-bold">◎</span> You</span>
+            <span><span className="text-terminal-red font-bold">◆</span> Monster</span>
+            <span><span className="text-terminal-yellow font-bold">◈</span> Elite</span>
+            <span><span className="text-terminal-cyan font-bold">+</span> Shrine</span>
+            <span><span className="text-terminal-yellow font-bold">●</span> Treasure</span>
+            <span><span className="text-terminal-red">×</span> Trap</span>
             <span><span className="text-terminal-green font-bold">$</span> Shop</span>
-            <span><span className="text-terminal-cyan font-bold">{'>'}</span> Stairs</span>
-            <span><span className="text-terminal-red font-bold">B</span> Boss</span>
-            <span><span className="text-terminal-dim">?</span> Fog</span>
+            <span><span className="text-terminal-cyan font-bold">▼</span> Stairs</span>
+            <span><span className="text-terminal-red font-bold">▲</span> Boss</span>
+            <span><span className="text-terminal-dim">░</span> Fog</span>
           </div>
           <div className="mt-1 text-[10px] text-terminal-dim">Tip: glowing tiles are reachable — click/tap to move. WASD/arrows work too. Press E on stairs to descend.</div>
         </Panel>

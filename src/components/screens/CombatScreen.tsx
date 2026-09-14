@@ -6,37 +6,38 @@ import { Panel } from '../ui/Panel';
 import { ProgressBar } from '../ui/ProgressBar';
 import { calcDamage, calcCritChance, calcDodgeChance, chance, pickRandom } from '../../utils/rng';
 import { CLASSES } from '../../game/data/classes';
+import { ELITE_CROWN_ART, BOSS_AURA_TOP, BOSS_AURA_BOTTOM, isBossEnemy } from '../../game/data/ascii';
 import type { Enemy, EnemySkill } from '../../types/game';
 import { useKeyboard } from '../../hooks/useKeyboard';
 
 const CLASS_ASCII: Record<string, string> = {
   warrior: `
-   /|___
-   |   |
-   |___|
-  /|\\ /|\\
-   |   |
-  /|   |\\`,
+   /│▓▓▓\\
+   │░▓█▓░│
+   │▓███▓│
+  /│█\\░/█│\\
+   │▓█░█▓│
+  /│▓█░█▓│\\`,
   mage: `
-    /\\
-   (  )
-   |\\/|
-   |  |
-  /|  |\\
-   |  |`,
+     /\\
+   (░▓░)
+   │\\/\\│
+   │░█░│
+  /│▓█▓│\\
+   │▓█▓│`,
   rogue: `
    /--\\
-   |<>|
-   |  |
-  /|  |\\
-   |  |
-  /    \\`,
+   │<█>│
+   │░▓░│
+  /│▓█▓│\\
+   │▓█▓│
+  /░▓█▓░\\`,
   cleric: `
     (+)
-   \\|||/
-    | |
-   /| |\\
-    | |`,
+   \\│█│/
+   ▓│█│▓
+   /│█│\\
+   ▓│█│▓`,
 };
 
 /**
@@ -675,10 +676,10 @@ export function CombatScreen() {
   const intentBase = state.intent ? Math.floor(enemy.attack * state.intent.power) : enemy.attack;
   const intentMin = Math.max(1, Math.floor((intentBase - playerDef * 0.5) * 0.85));
   const intentMax = Math.max(1, Math.floor((intentBase - playerDef * 0.5) * 1.15));
-  const isBoss = enemy.id.includes('king') || enemy.id.includes('mancer') || enemy.id.includes('dragon_lord') || enemy.id.includes('demon');
+  const boss = isBossEnemy(enemy);
   const enemyFrame = enemy.isElite
     ? 'border-terminal-yellow shadow-[0_0_12px_rgba(255,215,0,0.25)]'
-    : isBoss
+    : boss
       ? 'border-terminal-red shadow-[0_0_16px_rgba(255,0,64,0.35)]'
       : 'border-terminal-dim/40';
 
@@ -691,15 +692,40 @@ export function CombatScreen() {
 
       <div className="flex flex-col sm:flex-row gap-4">
         <Panel title={enemy.isElite ? `ELITE ${enemy.name}` : enemy.name} className={`flex-1 relative ${enemyFrame}`}>
+          {enemy.isElite && (
+            <pre
+              className="text-terminal-yellow text-xs text-center whitespace-pre leading-tight font-mono"
+              style={{ textShadow: '0 0 8px currentColor' }}
+              aria-label="Elite crown"
+            >
+              {ELITE_CROWN_ART}
+            </pre>
+          )}
+          {boss && !enemy.isElite && (
+            <pre
+              className="text-terminal-red text-xs text-center whitespace-pre leading-tight font-mono opacity-80"
+              aria-hidden="true"
+            >
+              {BOSS_AURA_TOP}
+            </pre>
+          )}
           <pre
             className={`text-xs text-center mb-2 whitespace-pre leading-tight font-mono ${
-              enemy.isElite ? 'text-terminal-yellow' : isBoss ? 'text-terminal-red animate-pulse-glow' : 'text-terminal-red'
+              enemy.isElite ? 'text-terminal-yellow' : boss ? 'text-terminal-red animate-pulse-glow' : 'text-terminal-red'
             }`}
             style={{ textShadow: '0 0 8px currentColor' }}
             aria-label={`${enemy.name} artwork`}
           >
             {enemy.ascii}
           </pre>
+          {boss && (
+            <pre
+              className="text-terminal-red text-xs text-center whitespace-pre leading-tight font-mono opacity-80"
+              aria-hidden="true"
+            >
+              {BOSS_AURA_BOTTOM}
+            </pre>
+          )}
           <ProgressBar current={state.enemyHp} max={state.enemyMaxHp} label="HP" color="red" />
           <div className="mt-1 text-[10px] text-terminal-dim text-center">
             ATK {enemy.attack} · DEF {enemy.defense} · DEX {enemy.stats.dex}

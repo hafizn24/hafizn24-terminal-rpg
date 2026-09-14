@@ -10,13 +10,13 @@
 - Screens (`src/types/game.ts: Screen`): `title | classSelect | town | dungeon | combat | inventory | gameOver | shop | questBoard`.
 - Scripts: `npm run dev` (localhost:3000/5173), `npm run typecheck` (`tsc --noEmit`), `npm run build` (`tsc -b && vite build` → `dist/`), `npm run preview`. No unit tests; manual checklist in `TESTING.md`.
 
-## 2. Directory map (31 files in `src/`)
+## 2. Directory map (32 files in `src/`)
 ```
 src/App.tsx, main.tsx, index.css
 src/types/game.ts                    # all shared types
 src/utils/rng.ts, storage.ts         # dice/math, localStorage save
 src/hooks/useKeyboard.ts             # key listener, skips INPUT/TEXTAREA
-src/game/data/classes.ts, enemies.ts, items.ts
+src/game/data/classes.ts, enemies.ts, items.ts, ascii.ts
 src/game/store/gameStore.ts, uiStore.ts
 src/game/systems/dungeonGenerator.ts, questSystem.ts
 src/components/screens/ScreenRouter.tsx, TitleScreen.tsx, ClassSelectScreen.tsx, TownScreen.tsx, DungeonScreen.tsx, CombatScreen.tsx, ShopScreen.tsx, InventoryScreen.tsx, QuestBoardScreen.tsx, GameOverScreen.tsx
@@ -40,7 +40,8 @@ src/components/ui/Button.tsx, Panel.tsx, ProgressBar.tsx, StatAllocationPanel.ts
 
 ## 5. Data + systems
 - `game/data/classes.ts`: warrior (14/10/6, 120/30, Power Strike 10MP 2.5x), mage (6/8/16, 80/80, Fireball 15MP 3x), rogue (10/16/8, 90/40, Backstab 12MP 3x+crit), cleric (10/8/12, 100/60, Holy Light 12MP 2x+heal).
-- `game/data/enemies.ts`: `ENEMIES[10]` (slime→demon_knight), `BOSS_ENEMIES[4]` (goblin_king, necromancer, dragon_lord, demon_king).
+- `game/data/enemies.ts`: `ENEMIES[10]` (slime→demon_knight), `BOSS_ENEMIES[4]` (goblin_king, necromancer, dragon_lord, demon_king). Sprites use block/gradient shading (`░▒▓█ ▄▀`, box drawing only — no emoji/CJK).
+- `game/data/ascii.ts`: shared overlays — `ELITE_CROWN_ART` (layered over elite sprites), `BOSS_AURA_TOP/BOTTOM` (boss frames), `isBossEnemy()`, `getFloorTheme()` (boss=red, f7+=yellow, f4+=green, else cyan).
 - `game/data/items.ts`: ~26 items in `ITEMS`, `SHOP_STOCK { blacksmith[9], potion_shop[6], magic_shop[7] }`. Sell = 0.5x floor.
 - `game/systems/dungeonGenerator.ts`: `GRID_SIZE=5`, `SHOP_SPAWN_CHANCE=0.3`, `SHOP_PITY_FLOORS=3`. `generateDungeon(floor)`: (0,0)=start, (4,4)=stairs, boss floor (`%5==0`) (4,3)=boss; rest weighted monster/treasure/trap/empty, 12% elite if floor≥2, 1x shrine, 0-1x shop (pity). Helpers: `scaleEnemy (*1+(floor-1)*0.15, elite HP1.5/ATK1.3/reward2x)`, `getRandomLoot` (uncommon f2+, rare f4+, epic f7+), `trapDamage=5-15+floor*2`, `getAdjacentRooms()`.
 - `game/systems/questSystem.ts`: `QUEST_TEMPLATES[12]`, `generateDailyQuests(date)`→3, `generateSideQuests()`→2, `checkQuestProgress/isQuestComplete/checkDailyReset()`.
@@ -52,8 +53,8 @@ src/components/ui/Button.tsx, Panel.tsx, ProgressBar.tsx, StatAllocationPanel.ts
 - `TitleScreen`: ASCII art, `checkSave()` on mount, New (confirm if save) → `newGame()`, Continue → `load()`, shows bestFloor/bosses.
 - `ClassSelectScreen`: cards + name input (max16, Enter) → `createPlayer`.
 - `TownScreen`: hub `[BSM]/[POT]/[MAG]` → shop, `[INV]`, `[INN]` full heal+save, `[GLD]` quests, `[DGN]` enter/resume (reuse if `dungeon.floor==player.floor` else regen). Shows `StatAllocationPanel` + last-run panel.
-- `DungeonScreen`: lazy `generateDungeon(player.floor)`, `handleMove/handleRoomEntry` (monster→combat, treasure→addItem, trap→dmg/gameOver, shrine→+30%, shop→shop screen, stairs→hint), `handleDescend` (floor+1, regen, quest+save), `handleFlee`→town. Map: fog `?` for unexplored, `@/M/E/+/T/^/$/>/B/·`, reachable tiles highlighted + clickable (others disabled), explored x/25 counter, boss-floor theme (`floor%5==0`), current-room description. Keys: WASD/arrows, E descend, Esc town.
-- `CombatScreen`: local `CombatState` (+`round`), `rollIntent`, `getSkillAttack` per-class scaling (warrior STRx2 / mage INTx2.2 / rogue STR+DEX1.2 / cleric INT1.6), atk=`str+weapon+acc`, def=`armor.hp/5`, crit+lucky_charm, dodge via `calcDodgeChance` (MISS, guard +15%). Actions: Attack, Skill (rogue 25% 2x, cleric heal `2*int`), Item (smoke=flee, bomb=`power+floor*3`, potions block if full), Guard (halve +15% dodge +5MP), Run (`0.4+dex*0.02`). Intent shows damage range. Combat log: container-only auto-follow with `[Follow: ON/OFF]` toggle (never scrolls page). Victory: loot rolls, elite bonus 35%, gold+`gainExp`, quest kill/gold, clear room, autosave. Keys: 1/Enter atk, 2 skill, 3 potion, 4/Esc run, 5/G guard.
+- `DungeonScreen`: lazy `generateDungeon(player.floor)`, `handleMove/handleRoomEntry` (monster→combat, treasure→addItem, trap→dmg/gameOver, shrine→+30%, shop→shop screen, stairs→hint), `handleDescend` (floor+1, regen, quest+save), `handleFlee`→town. Map glyphs: `◎` you, `◆` monster, `◈` elite, `+` shrine, `●` treasure, `×` trap, `$` shop, `▼` stairs, `▲` boss, `·` empty, fog `░` distant / `?` reachable-bright. Frame tint via `getFloorTheme()`, explored x/25 counter, current-room description. Keys: WASD/arrows, E descend, Esc town.
+- `CombatScreen`: local `CombatState` (+`round`), `rollIntent`, `getSkillAttack` per-class scaling (warrior STRx2 / mage INTx2.2 / rogue STR+DEX1.2 / cleric INT1.6), atk=`str+weapon+acc`, def=`armor.hp/5`, crit+lucky_charm, dodge via `calcDodgeChance` (MISS, guard +15%). Enemy card: shaded sprite + `ELITE_CROWN_ART` overlay for elites, `BOSS_AURA` bars for bosses (`isBossEnemy`), player card: shaded `CLASS_ASCII` portrait.
 - `ShopScreen`: `SHOP_STOCK[selectedShop]`, buy/sell tabs, back to `shopReturn`. Sell: `getSellPrice`=0.5x floor, equipped items blocked (must unequip; `[E]`/EQUIPPED badge + disabled button), `isValuableItem` (rare/epic or ≥150g sell) needs two-step inline confirm, per-stack Sell All + bulk-sell `misc` loot with total + confirm. `InventoryScreen`: tabs all/equipment/consumables/misc, `StatAllocationPanel`, EQUIPPED/unequipped badges + `[E]` markers, equip (accessory via `ACCESSORY_IDS`), use (potions), drop (confirm). `QuestBoardScreen`: daily reset key `terminal_rpg_daily_reset`, Active/Available, accept/claim (gold+exp+item, remove, save). `GameOverScreen`: summary + Load/ New/Title.
 
 ## 7. UI/terminal primitives
