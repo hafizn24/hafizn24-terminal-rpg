@@ -4,10 +4,59 @@ import { useUIStore } from '../../game/store/uiStore';
 import { Button } from '../ui/Button';
 import { Panel } from '../ui/Panel';
 import { ProgressBar } from '../ui/ProgressBar';
-import { calcDamage, calcCritChance, chance, pickRandom } from '../../utils/rng';
+import { calcDamage, calcCritChance, calcDodgeChance, chance, pickRandom } from '../../utils/rng';
 import { CLASSES } from '../../game/data/classes';
 import type { Enemy, EnemySkill } from '../../types/game';
 import { useKeyboard } from '../../hooks/useKeyboard';
+
+const CLASS_ASCII: Record<string, string> = {
+  warrior: `
+   /|___
+   |   |
+   |___|
+  /|\\ /|\\
+   |   |
+  /|   |\\`,
+  mage: `
+    /\\
+   (  )
+   |\\/|
+   |  |
+  /|  |\\
+   |  |`,
+  rogue: `
+   /--\\
+   |<>|
+   |  |
+  /|  |\\
+   |  |
+  /    \\`,
+  cleric: `
+    (+)
+   \\|||/
+    | |
+   /| |\\
+    | |`,
+};
+
+/**
+ * Per-class skill scaling so each class feels different:
+ * warrior = STR-heavy, mage = INT-heavy, rogue = DEX-flavoured, cleric = INT w/ heal.
+ */
+function getSkillAttack(p: { class: string; stats: { str: number; dex: number; int: number } }, weaponStr = 0, accessoryInt = 0): number {
+  switch (p.class) {
+    case 'warrior':
+      return p.stats.str * 2 + p.stats.int * 0.3 + weaponStr;
+    case 'mage':
+      return p.stats.str * 0.4 + p.stats.int * 2.2 + accessoryInt;
+    case 'rogue':
+      return p.stats.str + p.stats.dex * 1.2 + p.stats.int * 0.3 + weaponStr;
+    case 'cleric':
+      return p.stats.str * 0.7 + p.stats.int * 1.6 + accessoryInt;
+    default:
+      return p.stats.str + p.stats.int;
+  }
+}
 
 interface CombatState {
   enemyHp: number;
@@ -22,6 +71,7 @@ interface CombatState {
   intent: EnemySkill | null;
   playerStatus: StatusEffect | null;
   enemyStatus: StatusEffect | null;
+  round: number;
 }
 
 interface StatusEffect {
@@ -63,7 +113,19 @@ export function CombatScreen() {
     intent: null,
     playerStatus: null,
     enemyStatus: null,
+    round: 1,
   });
+  // Combat log follows new entries only while enabled — toggling it off
+  // freezes the scroll so players can read history mid-fight. It only ever
+  // scrolls its own container, never the page/window.
+  const [autoFollow, setAutoFollow] = useState(true);
+  const combatLogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!autoFollow) return;
+    const el = combatLogRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [state.combatLog, autoFollow]);
 
   const enemyRef = useRef<Enemy | null>(null);
   const playerRef = useRef(player);
@@ -192,6 +254,26 @@ export function CombatScreen() {
     }
 
     const intent = stateRef.current.intent;
+    const guarding = stateRef.current.guarding;
+    const pDex = p.stats.dex + (p.equipment.accessory?.statBonus?.dex || 0);
+    const dodgeChance = calcDodgeChance(pDex, e.stats.dex, guarding);
+
+    // DEX dodge — avoids the hit entirely (guard boosts it).
+    if (chance(dodgeChance)) {
+      const msg = guarding ? 'Dodged behind your guard! No damage!' : 'Dodged! No damage!';
+      addLog(msg, 'combat');
+      addDamageNumber('MISS', '#00ffff', 50, 65);
+      setState((prev) => ({
+        ...prev,
+        combatLog: [...prev.combatLog, msg],
+        isPlayerTurn: true,
+        guarding: false,
+        intent: rollIntent(e),
+        round: prev.round + 1,
+      }));
+      return;
+    }
+
     let dmg: number;
     let logMsg: string;
     let statusToApply: StatusEffect | null = null;
@@ -205,14 +287,14 @@ export function CombatScreen() {
       logMsg = `${e.name} attacks for ${dmg} damage.`;
     }
 
-    if (stateRef.current.guarding) {
+    if (guarding) {
       dmg = Math.max(1, Math.floor(dmg / 2));
       logMsg += ' (Guarded!)';
     }
 
     const newHp = Math.max(0, p.stats.hp - dmg);
     // Guard restores a little MP.
-    const newMp = stateRef.current.guarding
+    const newMp = guarding
       ? Math.min(p.stats.maxMp, p.stats.mp + 5)
       : p.stats.mp;
     updatePlayer({ stats: { ...p.stats, hp: newHp, mp: newMp } });
@@ -239,6 +321,7 @@ export function CombatScreen() {
       isPlayerTurn: true,
       guarding: false,
       intent: rollIntent(e),
+      round: prev.round + 1,
       playerStatus: statusToApply ?? prev.playerStatus,
     }));
     if (statusToApply) {
@@ -303,11 +386,11 @@ export function CombatScreen() {
       return;
     }
 
-    const atk =
-      p.stats.str +
-      p.stats.int +
-      (p.equipment.weapon?.statBonus?.str || 0) +
-      (p.equipment.accessory?.statBonus?.int || 0);
+    const atk = getSkillAttack(
+      p,
+      p.equipment.weapon?.statBonus?.str || 0,
+      p.equipment.accessory?.statBonus?.int || 0
+    );
     const isRogueBonus = p.class === 'rogue' && chance(0.25);
     const base = calcDamage(Math.floor((atk * classDef.skill.power) / 2), e.defense);
     const dmg = isRogueBonus ? base * 2 : base;
@@ -455,7 +538,7 @@ export function CombatScreen() {
     const s = stateRef.current;
     if (!s.isPlayerTurn || s.isOver) return;
     if (applyStatusTick('player')) return;
-    const msg = 'You brace! Next hit halved, +5 MP.';
+    const msg = 'You brace! Next hit halved, +15% dodge, +5 MP.';
     setState((prev) => ({ ...prev, guarding: true, isPlayerTurn: false, combatLog: [...prev.combatLog, msg] }));
     addLog(msg, 'combat');
     setTimeout(enemyTurn, 800);
@@ -579,23 +662,53 @@ export function CombatScreen() {
   const bombCount = bombs.reduce((a, s) => a + s.quantity, 0);
   const smokeCount = smokes.reduce((a, s) => a + s.quantity, 0);
 
+  const playerAtk = player.stats.str + (player.equipment.weapon?.statBonus?.str || 0) + (player.equipment.accessory?.statBonus?.str || 0);
+  const playerDef =
+    Math.floor((player.equipment.armor?.statBonus?.hp || 0) / 5) +
+    Math.floor((player.equipment.accessory?.statBonus?.hp || 0) / 5);
+  const playerCrit = Math.round(
+    calcCritChance(player.stats.dex + (player.equipment.accessory?.statBonus?.dex || 0)) * 100
+  );
+  const playerDodge = Math.round(
+    calcDodgeChance(player.stats.dex + (player.equipment.accessory?.statBonus?.dex || 0), enemy.stats.dex, state.guarding) * 100
+  );
+  const intentBase = state.intent ? Math.floor(enemy.attack * state.intent.power) : enemy.attack;
+  const intentMin = Math.max(1, Math.floor((intentBase - playerDef * 0.5) * 0.85));
+  const intentMax = Math.max(1, Math.floor((intentBase - playerDef * 0.5) * 1.15));
+  const isBoss = enemy.id.includes('king') || enemy.id.includes('mancer') || enemy.id.includes('dragon_lord') || enemy.id.includes('demon');
+  const enemyFrame = enemy.isElite
+    ? 'border-terminal-yellow shadow-[0_0_12px_rgba(255,215,0,0.25)]'
+    : isBoss
+      ? 'border-terminal-red shadow-[0_0_16px_rgba(255,0,64,0.35)]'
+      : 'border-terminal-dim/40';
+
   return (
     <div className={`flex flex-col gap-4 animate-fade-in max-w-2xl mx-auto ${state.shaking ? 'animate-[shake_0.3s_ease-in-out]' : ''}`}>
       <h1 className="text-terminal-red text-lg tracking-widest uppercase text-center">
         {'<< Combat >>'}
+        <span className="text-terminal-dim text-xs ml-2">Round {state.round}</span>
       </h1>
 
       <div className="flex flex-col sm:flex-row gap-4">
-        <Panel title={enemy.isElite ? `ELITE ${enemy.name}` : enemy.name} className="flex-1 relative">
-          <pre className="text-terminal-red text-xs text-center mb-2 whitespace-pre">
+        <Panel title={enemy.isElite ? `ELITE ${enemy.name}` : enemy.name} className={`flex-1 relative ${enemyFrame}`}>
+          <pre
+            className={`text-xs text-center mb-2 whitespace-pre leading-tight font-mono ${
+              enemy.isElite ? 'text-terminal-yellow' : isBoss ? 'text-terminal-red animate-pulse-glow' : 'text-terminal-red'
+            }`}
+            style={{ textShadow: '0 0 8px currentColor' }}
+            aria-label={`${enemy.name} artwork`}
+          >
             {enemy.ascii}
           </pre>
           <ProgressBar current={state.enemyHp} max={state.enemyMaxHp} label="HP" color="red" />
-          <div className="mt-2 text-[11px] text-center" aria-live="polite">
+          <div className="mt-1 text-[10px] text-terminal-dim text-center">
+            ATK {enemy.attack} · DEF {enemy.defense} · DEX {enemy.stats.dex}
+          </div>
+          <div className="mt-1 text-[11px] text-center" aria-live="polite">
             {state.intent ? (
-              <span className="text-terminal-yellow">Intent: {state.intent.name} (~{Math.floor(enemy.attack * state.intent.power)} atk)</span>
+              <span className="text-terminal-yellow">Intent: {state.intent.name} (~{intentMin}-{intentMax} dmg)</span>
             ) : (
-              <span className="text-terminal-dim">Intent: Attack (~{enemy.attack} atk)</span>
+              <span className="text-terminal-dim">Intent: Attack (~{intentMin}-{intentMax} dmg)</span>
             )}
             {state.enemyStatus && (
               <span className="text-terminal-red ml-2">[{state.enemyStatus.id} {state.enemyStatus.turns}t]</span>
@@ -603,7 +716,12 @@ export function CombatScreen() {
           </div>
         </Panel>
 
-        <Panel title={player.name} className="flex-1">
+        <div className="flex-1 flex flex-col gap-2">
+          <div className="text-center text-terminal-cyan text-xs font-mono">— VS —</div>
+          <Panel title={player.name} className="flex-1">
+            <pre className="text-terminal-cyan text-xs text-center mb-1 whitespace-pre leading-tight" style={{ textShadow: '0 0 8px currentColor' }}>
+              {CLASS_ASCII[player.class] ?? CLASS_ASCII.warrior}
+            </pre>
           <div className="text-xs text-terminal-dim mb-2 text-center uppercase">
             {player.class} - Level {player.level}
             {state.guarding && <span className="text-terminal-cyan ml-2">[GUARDING]</span>}
@@ -615,12 +733,16 @@ export function CombatScreen() {
             <ProgressBar current={player.stats.hp} max={player.stats.maxHp} label="HP" color="red" />
             <ProgressBar current={player.stats.mp} max={player.stats.maxMp} label="MP" color="cyan" />
           </div>
+          <div className="mt-1 text-[10px] text-terminal-dim text-center">
+            ATK {playerAtk} · DEF {playerDef} · CRIT {playerCrit}% · DODGE {playerDodge}%
+          </div>
           {classDef && (
             <div className="mt-2 text-[11px] text-terminal-dim text-center">
               Skill: {classDef.skill.name} ({classDef.skill.mpCost} MP) — {classDef.skill.description}
             </div>
           )}
         </Panel>
+        </div>
       </div>
 
       <div className="relative">
@@ -636,7 +758,18 @@ export function CombatScreen() {
       </div>
 
       <Panel title="Combat Log">
-        <div className="max-h-24 overflow-y-auto text-xs space-y-1" aria-live="polite">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[10px] text-terminal-dim">Round {state.round} · newest at bottom</span>
+          <button
+            onClick={() => setAutoFollow((v) => !v)}
+            className="text-[10px] text-terminal-dim hover:text-terminal-green border border-terminal-dim/30 px-1.5 py-0.5"
+            aria-pressed={autoFollow}
+            title={autoFollow ? 'Stop auto-scrolling the combat log' : 'Resume auto-scrolling to newest entries'}
+          >
+            {autoFollow ? '[Follow: ON]' : '[Follow: OFF]'}
+          </button>
+        </div>
+        <div ref={combatLogRef} className="max-h-32 overflow-y-auto text-xs space-y-1" aria-live="polite">
           {state.combatLog.map((msg, i) => (
             <div key={i} className="text-terminal-dim animate-fade-in">
               <span className="text-terminal-green mr-1">&gt;</span>

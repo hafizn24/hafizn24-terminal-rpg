@@ -3,6 +3,7 @@ import { useGameStore } from '../../game/store/gameStore';
 import { useUIStore } from '../../game/store/uiStore';
 import { Button } from '../ui/Button';
 import { Panel } from '../ui/Panel';
+import { StatAllocationPanel } from '../ui/StatAllocationPanel';
 import { getRarityColor } from '../../utils/rng';
 
 type Tab = 'all' | 'equipment' | 'consumables' | 'misc';
@@ -157,34 +158,60 @@ export function InventoryScreen() {
             <span style={{ color: player.equipment.weapon ? getRarityColor(player.equipment.weapon.rarity) : undefined }}>
               {player.equipment.weapon?.name || 'None'}
             </span>
+            {player.equipment.weapon && (
+              <span className="text-terminal-yellow text-[10px] ml-1">[E]</span>
+            )}
           </div>
           <div>
             <span className="text-terminal-dim">Armor: </span>
             <span style={{ color: player.equipment.armor ? getRarityColor(player.equipment.armor.rarity) : undefined }}>
               {player.equipment.armor?.name || 'None'}
             </span>
+            {player.equipment.armor && (
+              <span className="text-terminal-yellow text-[10px] ml-1">[E]</span>
+            )}
           </div>
           <div>
             <span className="text-terminal-dim">Accessory: </span>
             <span style={{ color: player.equipment.accessory ? getRarityColor(player.equipment.accessory.rarity) : undefined }}>
               {player.equipment.accessory?.name || 'None'}
             </span>
+            {player.equipment.accessory && (
+              <span className="text-terminal-yellow text-[10px] ml-1">[E]</span>
+            )}
           </div>
         </div>
       </Panel>
+
+      <StatAllocationPanel />
 
       <Panel title={`Items (${player.inventory.length})`}>
         {filteredItems.length === 0 ? (
           <div className="text-terminal-dim text-xs italic">No items.</div>
         ) : (
           <div className="space-y-2">
-            {filteredItems.map((slot) => (
+            {filteredItems.map((slot) => {
+              const isEquipped =
+                player.equipment.weapon?.id === slot.item.id ||
+                player.equipment.armor?.id === slot.item.id ||
+                player.equipment.accessory?.id === slot.item.id;
+              const equippedSlot =
+                player.equipment.weapon?.id === slot.item.id
+                  ? 'Weapon'
+                  : player.equipment.armor?.id === slot.item.id
+                    ? 'Armor'
+                    : player.equipment.accessory?.id === slot.item.id
+                      ? 'Accessory'
+                      : null;
+              return (
               <div
                 key={slot.item.id}
-                className="flex items-center justify-between border-b border-terminal-dim/30 pb-2"
+                className={`flex items-center justify-between border-b border-terminal-dim/30 pb-2 ${
+                  isEquipped ? 'border-terminal-yellow/40 bg-terminal-yellow/5 px-1' : ''
+                }`}
               >
                 <div className="flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span style={{ color: getRarityColor(slot.item.rarity) }}>
                       {slot.item.name}
                     </span>
@@ -194,6 +221,15 @@ export function InventoryScreen() {
                     {slot.quantity > 1 && (
                       <span className="text-terminal-yellow text-xs">x{slot.quantity}</span>
                     )}
+                    {isEquipped ? (
+                      <span className="text-terminal-yellow text-[10px] border border-terminal-yellow/60 px-1">
+                        EQUIPPED{equippedSlot ? ` · ${equippedSlot}` : ''}
+                      </span>
+                    ) : (slot.item.type === 'weapon' || slot.item.type === 'armor') ? (
+                      <span className="text-terminal-dim text-[10px] border border-terminal-dim/40 px-1">
+                        unequipped
+                      </span>
+                    ) : null}
                   </div>
                   <div className="text-terminal-dim text-[10px]">{slot.item.description}</div>
                   {slot.item.statBonus && (
@@ -225,7 +261,8 @@ export function InventoryScreen() {
                   </Button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Panel>

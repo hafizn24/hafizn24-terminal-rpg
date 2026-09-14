@@ -33,6 +33,15 @@ export function calcCritChance(dex: number): number {
   return Math.min(0.4, 0.05 + dex * 0.01);
 }
 
+/**
+ * Dodge chance from DEX difference. Guarding adds a flat bonus.
+ * Capped at 30% so fights never become untouchable.
+ */
+export function calcDodgeChance(playerDex: number, enemyDex: number, guarding = false): number {
+  const base = 0.05 + (playerDex - enemyDex) * 0.01 + (guarding ? 0.15 : 0);
+  return Math.min(0.3, Math.max(0, base));
+}
+
 export function calcExpForLevel(level: number): number {
   return Math.floor(50 * Math.pow(level, 1.5));
 }

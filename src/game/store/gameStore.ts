@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Player, DungeonState, Quest, Screen, GameStats } from '../../types/game';
+import type { Player, DungeonState, Quest, Screen, GameStats, StatType } from '../../types/game';
 import { saveGame, loadGame, hasSaveData, deleteSave, DEFAULT_STATS } from '../../utils/storage';
 import { CLASSES } from '../../game/data/classes';
 import { ITEMS } from '../../game/data/items';
@@ -35,7 +35,14 @@ interface GameStore {
   updateQuestProgress: (eventType: string, target: string, value?: number) => void;
   addItem: (itemId: string, quantity?: number) => void;
   gainExp: (amount: number) => string[];
+  allocateStatPoint: (stat: StatType) => boolean;
 }
+
+/** Points granted per level-up for manual distribution. */
+export const STAT_POINTS_PER_LEVEL = 3;
+/** Max HP/MP granted per point put into hp/mp. */
+export const HP_PER_STAT_POINT = 10;
+export const MP_PER_STAT_POINT = 5;
 
 export const useGameStore = create<GameStore>((set, get) => ({
   currentScreen: 'title',
@@ -71,6 +78,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       ],
       equipment: { weapon: null, armor: null, accessory: null },
       floor: 1,
+      statPoints: 0,
     };
 
     const stats: GameStats = {
@@ -117,8 +125,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
   load: () => {
     const data = loadGame();
     if (!data) return false;
+    // Migration: saves from before statPoints existed get 0 (+ backfill
+    // 3 pts per level above 1 so veterans aren't short-changed).
+    const rawPlayer = data.player as Partial<Player>;
+    const statPoints =
+      typeof rawPlayer.statPoints === 'number'
+        ? rawPlayer.statPoints
+        : Math.max(0, (rawPlayer.level ?? 1) - 1) * STAT_POINTS_PER_LEVEL;
     set({
-      player: data.player,
+      player: { ...data.player, statPoints },
       dungeon: data.dungeon,
       quests: data.quests || [],
       currentScreen: data.dungeon ? 'dungeon' : 'town',
@@ -190,6 +205,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     let newExp = player.exp + amount;
     let newLevel = player.level;
     const newStats = { ...player.stats };
+    let statPoints = player.statPoints ?? 0;
     let threshold = player.expToNext;
 
     while (newExp >= threshold) {
@@ -205,11 +221,41 @@ export const useGameStore = create<GameStore>((set, get) => ({
         newStats.hp = newStats.maxHp;
         newStats.mp = newStats.maxMp;
       }
+      statPoints += STAT_POINTS_PER_LEVEL;
       threshold = calcExpForLevel(newLevel);
-      messages.push(`LEVEL UP! Now level ${newLevel}!`);
+      messages.push(`LEVEL UP! Now level ${newLevel}! (+${STAT_POINTS_PER_LEVEL} stat points)`);
     }
 
-    set({ player: { ...player, level: newLevel, exp: newExp, expToNext: threshold, stats: newStats } });
+    set({ player: { ...player, level: newLevel, exp: newExp, expToNext: threshold, stats: newStats, statPoints } });
     return messages;
+  },
+
+  allocateStatPoint: (stat) => {
+    const { player } = get();
+    if (!player || (player.statPoints ?? 0) <= 0) return false;
+    const stats = { ...player.stats };
+    switch (stat) {
+      case 'str':
+        stats.str += 1;
+        break;
+      case 'dex':
+        stats.dex += 1;
+        break;
+      case 'int':
+        stats.int += 1;
+        break;
+      case 'hp':
+        stats.maxHp += HP_PER_STAT_POINT;
+        stats.hp = Math.min(stats.maxHp, stats.hp + HP_PER_STAT_POINT);
+        break;
+      case 'mp':
+        stats.maxMp += MP_PER_STAT_POINT;
+        stats.mp = Math.min(stats.maxMp, stats.mp + MP_PER_STAT_POINT);
+        break;
+      default:
+        return false;
+    }
+    set({ player: { ...player, stats, statPoints: player.statPoints - 1 } });
+    return true;
   },
 }));

@@ -183,10 +183,16 @@ export function DungeonScreen() {
   if (!player || !dungeon) return <div className="text-terminal-dim">Loading...</div>;
 
   const currentRoom: Room = dungeon.rooms[dungeon.playerPos.y][dungeon.playerPos.x];
+  const isBossFloor = dungeon.floor % 5 === 0;
+  const exploredCount = dungeon.rooms.flat().filter((r) => r.explored).length;
+  const totalRooms = dungeon.gridSize * dungeon.gridSize;
+
+  const isAdjacent = (x: number, y: number) =>
+    Math.abs(x - dungeon.playerPos.x) + Math.abs(y - dungeon.playerPos.y) === 1;
 
   const roomTypeSymbol = (room: Room) => {
-    if (!room.explored) return '·';
     if (room.x === dungeon.playerPos.x && room.y === dungeon.playerPos.y) return '@';
+    if (!room.explored) return '?';
     switch (room.type) {
       case 'empty': return '·';
       case 'monster': return 'M';
@@ -197,24 +203,46 @@ export function DungeonScreen() {
       case 'shop': return '$';
       case 'stairs': return '>';
       case 'boss': return 'B';
-      case 'start': return '@';
+      case 'start': return '·';
       default: return '?';
     }
   };
 
-  const roomColor = (room: Room) => {
-    if (!room.explored) return 'text-terminal-dim';
-    if (room.x === dungeon.playerPos.x && room.y === dungeon.playerPos.y) return 'text-terminal-cyan';
+  const roomStyle = (room: Room) => {
+    const isPlayer = room.x === dungeon.playerPos.x && room.y === dungeon.playerPos.y;
+    if (isPlayer) return 'text-terminal-cyan bg-terminal-cyan/20 border-terminal-cyan shadow-[0_0_8px_rgba(0,255,255,0.35)] animate-pulse-glow';
+    if (!room.explored) {
+      return isAdjacent(room.x, room.y)
+        ? 'text-terminal-green bg-terminal-panel border-terminal-green/60 hover:bg-terminal-green/10 cursor-pointer'
+        : 'text-terminal-dim/40 bg-terminal-bg border-terminal-dim/20';
+    }
+    const base = 'bg-terminal-panel ';
     switch (room.type) {
-      case 'monster': return 'text-terminal-red';
-      case 'elite': return 'text-terminal-yellow';
-      case 'shrine': return 'text-terminal-cyan';
-      case 'treasure': return 'text-terminal-yellow';
-      case 'trap': return 'text-terminal-red';
-      case 'shop': return 'text-terminal-green';
-      case 'stairs': return 'text-terminal-cyan';
-      case 'boss': return 'text-terminal-red';
-      default: return 'text-terminal-dim';
+      case 'monster': return `${base}text-terminal-red border-terminal-red/40`;
+      case 'elite': return `${base}text-terminal-yellow border-terminal-yellow/60 font-bold`;
+      case 'shrine': return `${base}text-terminal-cyan border-terminal-cyan/50`;
+      case 'treasure': return `${base}text-terminal-yellow border-terminal-yellow/40`;
+      case 'trap': return `${base}text-terminal-red/70 border-terminal-red/30 line-through`;
+      case 'shop': return `${base}text-terminal-green border-terminal-green/50 font-bold`;
+      case 'stairs': return `${base}text-terminal-cyan border-terminal-cyan font-bold`;
+      case 'boss': return 'bg-terminal-red/10 text-terminal-red border-terminal-red font-bold shadow-[0_0_8px_rgba(255,0,64,0.3)]';
+      default: return `${base}text-terminal-dim border-terminal-dim/30`;
+    }
+  };
+
+  const roomDescription = (room: Room): string => {
+    if (!room.explored) return 'Unexplored darkness.';
+    switch (room.type) {
+      case 'monster': return 'Monster lair — combat awaits!';
+      case 'elite': return 'Elite den — tougher foe, better loot!';
+      case 'boss': return 'BOSS chamber — steel yourself!';
+      case 'treasure': return room.item ? `Treasure: ${room.item.name}` : 'Looted chest.';
+      case 'trap': return room.trapDamage ? 'Armed trap — watch out!' : 'Disarmed trap.';
+      case 'shrine': return 'Glowing shrine — restores 30% HP/MP.';
+      case 'shop': return 'Merchant camp — press to trade.';
+      case 'stairs': return 'Stairs down — press E to descend.';
+      case 'start': return 'Dungeon entrance.';
+      default: return 'Cleared room. Safe… for now.';
     }
   };
 
@@ -223,31 +251,32 @@ export function DungeonScreen() {
   return (
     <div className="flex flex-col gap-4 animate-fade-in">
       <div className="flex items-center justify-between">
-        <h1 className="text-terminal-cyan text-lg tracking-widest">
-          FLOOR {dungeon.floor}
+        <h1 className={`text-lg tracking-widest ${isBossFloor ? 'text-terminal-red animate-pulse-glow' : 'text-terminal-cyan'}`}>
+          {isBossFloor ? `FLOOR ${dungeon.floor} — BOSS` : `FLOOR ${dungeon.floor}`}
         </h1>
+        <span className="text-terminal-dim text-[11px]">
+          Explored {exploredCount}/{totalRooms}
+        </span>
         <Button variant="ghost" size="sm" onClick={handleFlee}>
           {'[Flee to Town]'}
         </Button>
       </div>
 
       <div className="flex flex-col lg:flex-row gap-4">
-        <Panel title="Dungeon Map" className="flex-shrink-0">
-          <div className="flex flex-col items-center gap-0.5 font-mono">
+        <Panel title={isBossFloor ? 'Dungeon Map — Boss Floor' : 'Dungeon Map'} className={`flex-shrink-0 ${isBossFloor ? 'border-terminal-red/50' : ''}`}>
+          <div className="flex flex-col items-center gap-1 font-mono p-2 bg-terminal-bg/50 border border-terminal-dim/20">
             {dungeon.rooms.map((row, y) => (
-              <div key={y} className="flex gap-0.5">
+              <div key={y} className="flex gap-1">
                 {row.map((room, x) => (
                   <button
                     key={`${x}-${y}`}
                     onClick={() => handleCellClick(x, y)}
-                    aria-label={`Move to ${x},${y} ${room.type}`}
-                    className={`w-7 h-7 sm:w-6 sm:h-6 flex items-center justify-center text-[10px] sm:text-xs border border-terminal-dim/30
-                      ${roomColor(room)} ${
-                      room.x === dungeon.playerPos.x && room.y === dungeon.playerPos.y
-                        ? 'bg-terminal-cyan/20 border-terminal-cyan'
-                        : room.explored
-                        ? 'bg-terminal-panel'
-                        : 'bg-terminal-bg'
+                    disabled={!isAdjacent(x, y)}
+                    aria-label={`Move to ${x},${y} ${room.explored ? room.type : 'unexplored'}${isAdjacent(x, y) ? ' (adjacent)' : ''}`}
+                    title={room.explored ? `${room.type} (${x},${y})` : `Unexplored (${x},${y})${isAdjacent(x, y) ? ' — click to move' : ''}`}
+                    className={`w-9 h-9 sm:w-8 sm:h-8 flex items-center justify-center text-sm font-bold border transition-all
+                      ${roomStyle(room)} ${
+                      isAdjacent(x, y) ? 'cursor-pointer hover:scale-105' : room.x === dungeon.playerPos.x && room.y === dungeon.playerPos.y ? '' : 'cursor-default'
                     }`}
                   >
                     {roomTypeSymbol(room)}
@@ -256,18 +285,20 @@ export function DungeonScreen() {
               </div>
             ))}
           </div>
-          <div className="mt-2 text-[10px] text-terminal-dim flex flex-wrap gap-3">
-            <span><span className="text-terminal-cyan">@</span> You</span>
+          <div className="mt-2 text-[10px] text-terminal-dim">You are here: ({dungeon.playerPos.x},{dungeon.playerPos.y}) — {roomDescription(currentRoom)}</div>
+          <div className="mt-2 text-[10px] text-terminal-dim flex flex-wrap gap-x-3 gap-y-1">
+            <span><span className="text-terminal-cyan font-bold">@</span> You</span>
             <span><span className="text-terminal-red">M</span> Monster</span>
-            <span><span className="text-terminal-yellow">E</span> Elite</span>
+            <span><span className="text-terminal-yellow font-bold">E</span> Elite</span>
             <span><span className="text-terminal-cyan">+</span> Shrine</span>
             <span><span className="text-terminal-yellow">T</span> Treasure</span>
             <span><span className="text-terminal-red">^</span> Trap</span>
-            <span><span className="text-terminal-green">$</span> Shop</span>
-            <span><span className="text-terminal-cyan">{'>'}</span> Stairs</span>
-            <span><span className="text-terminal-red">B</span> Boss</span>
+            <span><span className="text-terminal-green font-bold">$</span> Shop</span>
+            <span><span className="text-terminal-cyan font-bold">{'>'}</span> Stairs</span>
+            <span><span className="text-terminal-red font-bold">B</span> Boss</span>
+            <span><span className="text-terminal-dim">?</span> Fog</span>
           </div>
-          <div className="mt-1 text-[10px] text-terminal-dim">Tip: tap an adjacent tile to move. Press E on stairs to descend.</div>
+          <div className="mt-1 text-[10px] text-terminal-dim">Tip: glowing tiles are reachable — click/tap to move. WASD/arrows work too. Press E on stairs to descend.</div>
         </Panel>
 
         <div className="flex-1 flex flex-col gap-3">
