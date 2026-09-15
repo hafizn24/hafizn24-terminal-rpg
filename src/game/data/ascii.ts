@@ -1,23 +1,25 @@
 import type { Enemy } from '../../types/game';
+import { isBossFloor } from '../systems/dungeonGenerator';
 
 /**
- * Shared ASCII overlays + helpers.
+ * Shared helpers + retired ASCII overlays.
  *
- * The base sprites live in `enemies.ts` / `CombatScreen.tsx` (CLASS_ASCII).
- * Elite and boss variants reuse those sprites and layer one of the
- * overlays below on top, so new tiers never need redrawn art.
+ * UI is text-only (no character art): `ELITE_CROWN_ART` and
+ * `BOSS_AURA_TOP/BOTTOM` are data-only and unused by render — do not
+ * re-add them without a design decision. Live helpers: `isBossEnemy()`,
+ * `getFloorTheme()`.
  *
  * All glyphs are monospace-safe (block elements + box drawing only):
  * no emoji/CJK, so columns stay aligned in JetBrains Mono.
  */
 
-/** Crown rendered above elite sprites (gold via `text-terminal-yellow`). */
+/** Retired: crown formerly rendered above elite sprites. Data-only. */
 export const ELITE_CROWN_ART = `    \\\\  ^  /
      \\\\^ ^/
     ▓▓▓▓▓▓▓
     ▓▓▓▓▓▓▓`;
 
-/** Aura bars rendered above/below boss sprites (red glow). */
+/** Retired: aura bars formerly rendered around boss sprites. Data-only. */
 export const BOSS_AURA_TOP = `  ░▒▓█████▓▒░`;
 export const BOSS_AURA_BOTTOM = `  ░▒▓█████▓▒░`;
 
@@ -39,7 +41,7 @@ export function getFloorTheme(floor: number): {
   label: string;
   labelClass: string;
 } {
-  if (floor % 5 === 0) {
+  if (isBossFloor(floor)) {
     return {
       frame: 'border-terminal-red/60',
       label: `FLOOR ${floor} — BOSS`,

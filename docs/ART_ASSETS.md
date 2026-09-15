@@ -1,29 +1,34 @@
 # ART_ASSETS.md — Character art inventory
 
-> Every character that currently has art, where the art lives, and the spec
-> for replacing the ASCII placeholders with proper art later.
-> Code truth: `src/game/data/enemies.ts` (`ascii`), `src/game/data/ascii.ts`
-> (overlays), `src/components/screens/CombatScreen.tsx` (`CLASS_ASCII`).
+> REMOVED FROM UI (minimalistic pass): no character art is rendered anywhere.
+> Combat is text-only — enemy/player `<pre>` ASCII, elite crowns, and boss
+> auras were deleted from `CombatScreen.tsx`. The strings below remain in
+> data files as reference only (`enemies.ts ascii`, `ascii.ts` overlays,
+> old `CLASS_ASCII`) and must NOT be re-added to the UI without a design
+> decision. Palette + spec kept for future key-art only.
 
 ## Conventions
 
-- Current style: monospace ASCII with block/gradient shading (`░▒▓█ ▄▀`,
-  box drawing only — no emoji/CJK so columns stay aligned in JetBrains Mono).
-- Elite/boss tiers reuse base sprites + overlays (`ascii.ts`) — no redraws.
+- UI is text-only: no character/enemy sprites are rendered. The `ascii`
+  strings in `enemies.ts` and the overlays in `ascii.ts` are kept as
+  reference data only (see §4).
+- Monospace-safe glyphs only (`░▒▓█ ▄▀`, box drawing — no emoji/CJK so
+  columns stay aligned in JetBrains Mono). This applies to bars, map
+  tiles, and the two text banners in §5.
 - Palette = terminal theme (`tailwind.config.js`): see spec table below.
-- Status for all characters below: `ASCII placeholder` (proper art not started).
 
 ## 1. Player classes (4)
 
-Art: `CombatScreen.tsx` → `CLASS_ASCII[warrior|mage|rogue|cleric]`.
-Tags (`[SWORD]` etc.) in `src/game/data/classes.ts`.
+Art: deleted from UI (the old `CLASS_ASCII` block in `CombatScreen.tsx` was
+removed outright). Class tags (`[SWORD]` etc.) still live in
+`src/game/data/classes.ts` and are still shown on the class-select cards.
 
 | ID | Name | Role | Accent | Base stats | Skill | Status |
 |----|------|------|--------|------------|-------|--------|
-| `warrior` | Warrior | melee tank | red `#ff0040` | 14/10/6, 120HP/30MP | Power Strike 10MP 2.5x | ASCII placeholder |
-| `mage` | Mage | burst caster | cyan `#00ffff` | 6/8/16, 80HP/80MP | Fireball 15MP 3x | ASCII placeholder |
-| `rogue` | Rogue | crit striker | yellow `#ffd700` | 10/16/8, 90HP/40MP | Backstab 12MP 3x+crit | ASCII placeholder |
-| `cleric` | Cleric | healer hybrid | green `#00ff41` | 10/8/12, 100HP/60MP | Holy Light 12MP 2x+heal | ASCII placeholder |
+| `warrior` | Warrior | melee tank | red `#ff0040` | 14/10/6, 120HP/30MP | Power Strike 10MP 2.5x | Removed from UI |
+| `mage` | Mage | burst caster | cyan `#00ffff` | 6/8/16, 80HP/80MP | Fireball 15MP 3x | Removed from UI |
+| `rogue` | Rogue | crit striker | yellow `#ffd700` | 10/16/8, 90HP/40MP | Backstab 12MP 3x+crit | Removed from UI |
+| `cleric` | Cleric | healer hybrid | green `#00ff41` | 10/8/12, 100HP/60MP | Holy Light 12MP 2x+heal | Removed from UI |
 
 <details><summary>Current ASCII (click to expand)</summary>
 
@@ -70,21 +75,22 @@ Tags (`[SWORD]` etc.) in `src/game/data/classes.ts`.
 
 ## 2. Enemies (10)
 
-Art: `enemies.ts` → `ENEMIES[i].ascii`. Pool unlocks with depth
-(`getEnemiesForFloor`: first 3 on floor 1, more as `ceil(floor/2)+1` grows).
+Art: `enemies.ts` → `ENEMIES[i].ascii` (data-only, never rendered). Pool
+unlocks with depth (`getEnemiesForFloor`: first 3 on floor 1, more as
+`ceil(floor/2)+1` grows).
 
 | ID | Name | ATK / DEF / HP | Skills | Status |
 |----|------|---------------|--------|--------|
-| `slime` | Green Slime | 5 / 1 / 20 | — | ASCII placeholder |
-| `goblin` | Goblin | 10 / 3 / 35 | Scratch 1.2x | ASCII placeholder |
-| `skeleton` | Skeleton | 14 / 5 / 45 | Bone Crush 1.5x | ASCII placeholder |
-| `dark_mage` | Dark Mage | 8 / 4 / 40 | Shadow Bolt 2x, Drain Life +poison | ASCII placeholder |
-| `orc` | Orc Warrior | 20 / 8 / 70 | Cleave 1.8x, War Cry | ASCII placeholder |
-| `shadow_wolf` | Shadow Wolf | 18 / 6 / 55 | Fang Strike 1.6x, Howl | ASCII placeholder |
-| `wraith` | Wraith | 12 / 3 / 60 | Life Drain +poison, Soul Rend 2.2x | ASCII placeholder |
-| `flame_elemental` | Flame Elemental | 10 / 5 / 50 | Fireball +burn, Flame Wave 1.8x | ASCII placeholder |
-| `dragon_wyrmling` | Dragon Wyrmling | 28 / 12 / 100 | Fire Breath 2.8x, Tail Whip 1.5x | ASCII placeholder |
-| `demon_knight` | Demon Knight | 32 / 15 / 120 | Hellfire Slash 3x, Dark Shield | ASCII placeholder |
+| `slime` | Green Slime | 5 / 1 / 20 | — | Removed from UI |
+| `goblin` | Goblin | 10 / 3 / 35 | Scratch 1.2x | Removed from UI |
+| `skeleton` | Skeleton | 14 / 5 / 45 | Bone Crush 1.5x | Removed from UI |
+| `dark_mage` | Dark Mage | 8 / 4 / 40 | Shadow Bolt 2x, Drain Life +poison | Removed from UI |
+| `orc` | Orc Warrior | 20 / 8 / 70 | Cleave 1.8x, War Cry | Removed from UI |
+| `shadow_wolf` | Shadow Wolf | 18 / 6 / 55 | Fang Strike 1.6x, Howl | Removed from UI |
+| `wraith` | Wraith | 12 / 3 / 60 | Life Drain +poison, Soul Rend 2.2x | Removed from UI |
+| `flame_elemental` | Flame Elemental | 10 / 5 / 50 | Fireball +burn, Flame Wave 1.8x | Removed from UI |
+| `dragon_wyrmling` | Dragon Wyrmling | 28 / 12 / 100 | Fire Breath 2.8x, Tail Whip 1.5x | Removed from UI |
+| `demon_knight` | Demon Knight | 32 / 15 / 120 | Hellfire Slash 3x, Dark Shield | Removed from UI |
 
 <details><summary>Current ASCII (click to expand)</summary>
 
@@ -94,31 +100,33 @@ Art: `enemies.ts` → `ENEMIES[i].ascii`. Pool unlocks with depth
 
 ## 3. Bosses (4)
 
-Art: `enemies.ts` → `BOSS_ENEMIES[i].ascii`. One per boss floor
-(`floor 5` → goblin_king, `10` → necromancer, `15` → dragon_lord, `20` → demon_king).
-Rendered with `BOSS_AURA_TOP/BOTTOM` bars + red glow frame.
+Art: `enemies.ts` → `BOSS_ENEMIES[i].ascii` (data-only, never rendered).
+Boss floors: `floor 5` → goblin_king, `10` → necromancer, `15` → dragon_lord,
+`20` → demon_king. Boss fights are marked by a red `Panel` frame + `BOSS`
+title, not by art.
 
 | ID | Name | Floor | ATK / DEF / HP | Signature skill | Status |
 |----|------|-------|---------------|-----------------|--------|
-| `goblin_king` | Goblin King | 5 | 22 / 10 / 120 | Royal Smash 2x | ASCII placeholder |
-| `necromancer` | Necromancer | 10 | 12 / 6 / 100 | Death Ray 2.5x | ASCII placeholder |
-| `dragon_lord` | Dragon Lord | 15 | 38 / 18 / 250 | Inferno Breath 3.5x | ASCII placeholder |
-| `demon_king` | Demon King | 20 | 45 / 22 / 400 | Hellfire Storm 4x | ASCII placeholder |
+| `goblin_king` | Goblin King | 5 | 22 / 10 / 120 | Royal Smash 2x | Removed from UI |
+| `necromancer` | Necromancer | 10 | 12 / 6 / 100 | Death Ray 2.5x | Removed from UI |
+| `dragon_lord` | Dragon Lord | 15 | 38 / 18 / 250 | Inferno Breath 3.5x | Removed from UI |
+| `demon_king` | Demon King | 20 | 45 / 22 / 400 | Hellfire Storm 4x | Removed from UI |
 
-## 4. Overlays (not characters — layered on sprites)
+## 4. Overlays (retired — data-only, unused by render)
 
-| Asset | File | Used for | Status |
-|-------|------|----------|--------|
-| `ELITE_CROWN_ART` | `ascii.ts` | elite rooms (gold crown above base sprite) | ASCII placeholder |
-| `BOSS_AURA_TOP/BOTTOM` | `ascii.ts` | boss fights (red aura bars) | ASCII placeholder |
+| Asset | File | Former use | Status |
+|-------|------|------------|--------|
+| `ELITE_CROWN_ART` | `ascii.ts` | gold crown above elite sprites | Retired |
+| `BOSS_AURA_TOP/BOTTOM` | `ascii.ts` | red aura bars around boss sprites | Retired |
 
-## 5. Missing art (characters with no sprite yet)
+## 5. Text banners (still rendered — not character art)
 
-| Character | Where | Current | Needed later |
-|-----------|-------|---------|--------------|
-| Merchant | shop rooms (`DungeonScreen` → `ShopScreen`) | text log only (`"A mysterious merchant appears!"`) | shopkeeper portrait |
-| Shrine spirit | shrine rooms | text only | optional ambient art |
-| Title hero | `TitleScreen` | old ASCII banner | key-art / logo |
+| Asset | Where | Notes |
+|-------|-------|-------|
+| Title logo | `TitleScreen` (`TITLE_ART`) | block-letter banner, still shown |
+| Game-over box | `GameOverScreen` | box-drawing frame, still shown |
+| Merchant | shop rooms (`DungeonScreen` → `ShopScreen`) | text log only (`"A mysterious merchant appears!"`) — no portrait |
+| Shrine spirit | shrine rooms | text only |
 
 ## 6. Proper-art spec (for later commissioning)
 

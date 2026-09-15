@@ -5,9 +5,20 @@ import { CLASSES } from '../../game/data/classes';
 import { ITEMS } from '../../game/data/items';
 import { checkQuestProgress, isQuestComplete } from '../../game/systems/questSystem';
 import { calcExpForLevel } from '../../utils/rng';
+import { CHECKPOINT_INTERVAL, isBossFloor } from '../../game/systems/dungeonGenerator';
 
 export type ShopType = 'blacksmith' | 'potion_shop' | 'magic_shop';
 export type ShopReturn = 'town' | 'dungeon';
+export type StatsReturn = 'town' | 'inventory' | 'dungeon';
+
+/** Re-exported so screens have one import for checkpoint rules. Boss = save point. */
+export { CHECKPOINT_INTERVAL, isBossFloor as isCheckpointFloor };
+
+/** Last checkpoint at or below the given floor (floors 1-4 have none yet). */
+export function getLastCheckpoint(floor: number): number | null {
+  if (floor < CHECKPOINT_INTERVAL) return null;
+  return Math.floor(floor / CHECKPOINT_INTERVAL) * CHECKPOINT_INTERVAL;
+}
 
 interface GameStore {
   currentScreen: Screen;
@@ -18,11 +29,13 @@ interface GameStore {
   hasSave: boolean;
   selectedShop: ShopType;
   shopReturn: ShopReturn;
+  statsReturn: StatsReturn;
   lastSave: string;
   stats: GameStats;
 
   setScreen: (screen: Screen) => void;
   setSelectedShop: (shop: ShopType, ret?: ShopReturn) => void;
+  setStatsReturn: (ret: StatsReturn) => void;
   createPlayer: (name: string, classId: string) => void;
   updatePlayer: (updates: Partial<Player>) => void;
   setDungeon: (dungeon: DungeonState | null) => void;
@@ -53,6 +66,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   hasSave: false,
   selectedShop: 'blacksmith' as ShopType,
   shopReturn: 'town' as ShopReturn,
+  statsReturn: 'town' as StatsReturn,
   lastSave: '',
   stats: { ...DEFAULT_STATS },
 
@@ -60,6 +74,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   setSelectedShop: (shop, ret) =>
     set((s) => ({ selectedShop: shop, shopReturn: ret ?? s.shopReturn })),
+
+  setStatsReturn: (ret) => set({ statsReturn: ret }),
 
   createPlayer: (name, classId) => {
     const classDef = CLASSES.find((c) => c.id === classId);
@@ -116,8 +132,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
   save: () => {
     const { player, dungeon, quests, stats } = get();
     if (!player) return false;
+    // Checkpoint saves: dungeon position is only persisted on boss floors
+    // (5, 10, 15, ...). Leaving a run before the next checkpoint discards
+    // the map — re-entering starts that floor fresh.
+    const dungeonToSave =
+      dungeon && isBossFloor(dungeon.floor) ? dungeon : null;
     const lastSave = new Date().toISOString();
-    const success = saveGame({ version: 1, player, dungeon, quests, lastSave, stats });
+    const success = saveGame({ version: 1, player, dungeon: dungeonToSave, quests, lastSave, stats });
     if (success) set({ hasSave: true, lastSave });
     return success;
   },
@@ -155,6 +176,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       hasSave: false,
       selectedShop: 'blacksmith',
       shopReturn: 'town' as ShopReturn,
+      statsReturn: 'town' as StatsReturn,
       lastSave: '',
       stats: s.stats,
     }));

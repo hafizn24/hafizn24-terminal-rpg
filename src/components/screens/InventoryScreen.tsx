@@ -6,7 +6,7 @@ import { Panel } from '../ui/Panel';
 import { StatAllocationPanel } from '../ui/StatAllocationPanel';
 import { getRarityColor } from '../../utils/rng';
 
-type Tab = 'all' | 'equipment' | 'consumables' | 'misc';
+type Tab = 'all' | 'equipment' | 'consumables' | 'misc' | 'stats';
 
 const ACCESSORY_IDS = new Set(['lucky_charm', 'iron_ring', 'sage_amulet']);
 
@@ -18,7 +18,7 @@ export function InventoryScreen() {
   if (!player) return null;
 
   const filteredItems = player.inventory.filter((slot) => {
-    if (activeTab === 'all') return true;
+    if (activeTab === 'all' || activeTab === 'stats') return true;
     if (activeTab === 'equipment') return slot.item.type === 'weapon' || slot.item.type === 'armor';
     if (activeTab === 'consumables') return slot.item.type === 'potion' || !!slot.item.effect;
     if (activeTab === 'misc') return slot.item.type === 'misc' || slot.item.type === 'key';
@@ -42,7 +42,6 @@ export function InventoryScreen() {
       addLog(`Unequipped ${item.name}.`, 'info');
     } else {
       newEquipment[equipSlot] = item;
-      // Apply max HP/MP bonuses immediately without overhealing.
       if (item.statBonus?.hp || item.statBonus?.mp) {
         const maxHpBonus = item.statBonus.hp ?? 0;
         const maxMpBonus = item.statBonus.mp ?? 0;
@@ -109,7 +108,6 @@ export function InventoryScreen() {
     const newInv = player.inventory
       .map((s) => (s.item.id === itemId ? { ...s, quantity: s.quantity - 1 } : s))
       .filter((s) => s.quantity > 0);
-    // Unequip if the last copy was dropped so equipment never references a missing item.
     const newEquipment = { ...player.equipment };
     if (slot.quantity <= 1) {
       if (newEquipment.weapon?.id === itemId) newEquipment.weapon = null;
@@ -120,15 +118,17 @@ export function InventoryScreen() {
     addLog('Item dropped.', 'info');
   };
 
+  const points = player.statPoints ?? 0;
   const tabs: { id: Tab; label: string }[] = [
     { id: 'all', label: 'All' },
-    { id: 'equipment', label: 'Equipment' },
+    { id: 'equipment', label: 'Gear' },
     { id: 'consumables', label: 'Potions' },
     { id: 'misc', label: 'Misc' },
+    { id: 'stats', label: points > 0 ? `Stats (${points})` : 'Stats' },
   ];
 
   return (
-    <div className="flex flex-col gap-4 animate-fade-in">
+    <div className="flex flex-col gap-3 animate-fade-in">
       <div className="flex items-center justify-between">
         <h1 className="text-terminal-cyan text-lg tracking-widest uppercase">
           Inventory
@@ -138,7 +138,7 @@ export function InventoryScreen() {
         </Button>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex gap-1 flex-wrap">
         {tabs.map((tab) => (
           <Button
             key={tab.id}
@@ -151,121 +151,73 @@ export function InventoryScreen() {
         ))}
       </div>
 
-      <Panel title="Equipment">
-        <div className="grid grid-cols-3 gap-2 text-xs">
-          <div>
-            <span className="text-terminal-dim">Weapon: </span>
-            <span style={{ color: player.equipment.weapon ? getRarityColor(player.equipment.weapon.rarity) : undefined }}>
-              {player.equipment.weapon?.name || 'None'}
-            </span>
-            {player.equipment.weapon && (
-              <span className="text-terminal-yellow text-[10px] ml-1">[E]</span>
-            )}
+      {activeTab === 'stats' ? (
+        <StatAllocationPanel />
+      ) : (
+        <>
+          <div className="text-[11px] text-terminal-dim">
+            Weapon: {player.equipment.weapon?.name || 'None'} · Armor:{' '}
+            {player.equipment.armor?.name || 'None'} · Acc:{' '}
+            {player.equipment.accessory?.name || 'None'}
           </div>
-          <div>
-            <span className="text-terminal-dim">Armor: </span>
-            <span style={{ color: player.equipment.armor ? getRarityColor(player.equipment.armor.rarity) : undefined }}>
-              {player.equipment.armor?.name || 'None'}
-            </span>
-            {player.equipment.armor && (
-              <span className="text-terminal-yellow text-[10px] ml-1">[E]</span>
-            )}
-          </div>
-          <div>
-            <span className="text-terminal-dim">Accessory: </span>
-            <span style={{ color: player.equipment.accessory ? getRarityColor(player.equipment.accessory.rarity) : undefined }}>
-              {player.equipment.accessory?.name || 'None'}
-            </span>
-            {player.equipment.accessory && (
-              <span className="text-terminal-yellow text-[10px] ml-1">[E]</span>
-            )}
-          </div>
-        </div>
-      </Panel>
 
-      <StatAllocationPanel />
-
-      <Panel title={`Items (${player.inventory.length})`}>
-        {filteredItems.length === 0 ? (
-          <div className="text-terminal-dim text-xs italic">No items.</div>
-        ) : (
-          <div className="space-y-2">
-            {filteredItems.map((slot) => {
-              const isEquipped =
-                player.equipment.weapon?.id === slot.item.id ||
-                player.equipment.armor?.id === slot.item.id ||
-                player.equipment.accessory?.id === slot.item.id;
-              const equippedSlot =
-                player.equipment.weapon?.id === slot.item.id
-                  ? 'Weapon'
-                  : player.equipment.armor?.id === slot.item.id
-                    ? 'Armor'
-                    : player.equipment.accessory?.id === slot.item.id
-                      ? 'Accessory'
-                      : null;
-              return (
-              <div
-                key={slot.item.id}
-                className={`flex items-center justify-between border-b border-terminal-dim/30 pb-2 ${
-                  isEquipped ? 'border-terminal-yellow/40 bg-terminal-yellow/5 px-1' : ''
-                }`}
-              >
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span style={{ color: getRarityColor(slot.item.rarity) }}>
-                      {slot.item.name}
-                    </span>
-                    <span className="text-terminal-dim text-[10px] uppercase">
-                      [{slot.item.rarity}]
-                    </span>
-                    {slot.quantity > 1 && (
-                      <span className="text-terminal-yellow text-xs">x{slot.quantity}</span>
-                    )}
-                    {isEquipped ? (
-                      <span className="text-terminal-yellow text-[10px] border border-terminal-yellow/60 px-1">
-                        EQUIPPED{equippedSlot ? ` · ${equippedSlot}` : ''}
-                      </span>
-                    ) : (slot.item.type === 'weapon' || slot.item.type === 'armor') ? (
-                      <span className="text-terminal-dim text-[10px] border border-terminal-dim/40 px-1">
-                        unequipped
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="text-terminal-dim text-[10px]">{slot.item.description}</div>
-                  {slot.item.statBonus && (
-                    <div className="text-terminal-green text-[10px]">
-                      {Object.entries(slot.item.statBonus).map(([stat, val]) => (
-                        <span key={stat} className="mr-2">+{val} {stat.toUpperCase()}</span>
-                      ))}
+          <Panel title={`Items (${player.inventory.length})`}>
+            {filteredItems.length === 0 ? (
+              <div className="text-terminal-dim text-xs italic">No items.</div>
+            ) : (
+              <div className="space-y-2">
+                {filteredItems.map((slot) => {
+                  const isEquipped =
+                    player.equipment.weapon?.id === slot.item.id ||
+                    player.equipment.armor?.id === slot.item.id ||
+                    player.equipment.accessory?.id === slot.item.id;
+                  return (
+                  <div
+                    key={slot.item.id}
+                    className="flex items-center justify-between border-b border-terminal-dim/30 pb-2"
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span style={{ color: getRarityColor(slot.item.rarity) }}>
+                          {slot.item.name}
+                        </span>
+                        {slot.quantity > 1 && (
+                          <span className="text-terminal-yellow text-xs">x{slot.quantity}</span>
+                        )}
+                        {isEquipped && (
+                          <span className="text-terminal-yellow text-[10px]">[E]</span>
+                        )}
+                      </div>
+                      <div className="text-terminal-dim text-[10px]">{slot.item.description}</div>
                     </div>
-                  )}
-                </div>
-                <div className="flex gap-1 ml-2">
-                  {(slot.item.type === 'weapon' || slot.item.type === 'armor') && (
-                    <Button size="sm" onClick={() => handleEquip(slot.item.id)}>
-                      {(() => {
-                        const target = ACCESSORY_IDS.has(slot.item.id)
-                          ? 'accessory'
-                          : slot.item.type === 'weapon' ? 'weapon' : 'armor';
-                        return player.equipment[target]?.id === slot.item.id ? 'Unequip' : 'Equip';
-                      })()}
-                    </Button>
-                  )}
-                  {(slot.item.type === 'potion') && (
-                    <Button size="sm" onClick={() => handleUse(slot.item.id)}>
-                      Use
-                    </Button>
-                  )}
-                  <Button size="sm" variant="danger" onClick={() => handleDrop(slot.item.id)}>
-                    Drop
-                  </Button>
-                </div>
+                    <div className="flex gap-1 ml-2">
+                      {(slot.item.type === 'weapon' || slot.item.type === 'armor') && (
+                        <Button size="sm" onClick={() => handleEquip(slot.item.id)}>
+                          {(() => {
+                            const target = ACCESSORY_IDS.has(slot.item.id)
+                              ? 'accessory'
+                              : slot.item.type === 'weapon' ? 'weapon' : 'armor';
+                            return player.equipment[target]?.id === slot.item.id ? 'Unequip' : 'Equip';
+                          })()}
+                        </Button>
+                      )}
+                      {(slot.item.type === 'potion') && (
+                        <Button size="sm" onClick={() => handleUse(slot.item.id)}>
+                          Use
+                        </Button>
+                      )}
+                      <Button size="sm" variant="danger" onClick={() => handleDrop(slot.item.id)}>
+                        Drop
+                      </Button>
+                    </div>
+                  </div>
+                  );
+                })}
               </div>
-              );
-            })}
-          </div>
-        )}
-      </Panel>
+            )}
+          </Panel>
+        </>
+      )}
     </div>
   );
 }
