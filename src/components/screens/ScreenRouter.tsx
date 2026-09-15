@@ -5,6 +5,7 @@ import { TownScreen } from './TownScreen';
 import { DungeonScreen } from './DungeonScreen';
 import { CombatScreen } from './CombatScreen';
 import { InventoryScreen } from './InventoryScreen';
+import { StatsScreen } from './StatsScreen';
 import { GameOverScreen } from './GameOverScreen';
 import { ShopScreen } from './ShopScreen';
 import { QuestBoardScreen } from './QuestBoardScreen';
@@ -16,6 +17,7 @@ const screenMap: Record<string, React.FC> = {
   dungeon: DungeonScreen,
   combat: CombatScreen,
   inventory: InventoryScreen,
+  stats: StatsScreen,
   gameOver: GameOverScreen,
   shop: ShopScreen,
   questBoard: QuestBoardScreen,

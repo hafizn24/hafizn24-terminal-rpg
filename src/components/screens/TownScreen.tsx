@@ -1,8 +1,7 @@
-import { useGameStore } from '../../game/store/gameStore';
+import { useGameStore, isCheckpointFloor } from '../../game/store/gameStore';
 import { useUIStore } from '../../game/store/uiStore';
 import { Button } from '../ui/Button';
 import { Panel } from '../ui/Panel';
-import { StatAllocationPanel } from '../ui/StatAllocationPanel';
 
 export function TownScreen() {
   const player = useGameStore((s) => s.player);
@@ -10,6 +9,7 @@ export function TownScreen() {
   const setScreen = useGameStore((s) => s.setScreen);
   const setDungeon = useGameStore((s) => s.setDungeon);
   const setSelectedShop = useGameStore((s) => s.setSelectedShop);
+  const setStatsReturn = useGameStore((s) => s.setStatsReturn);
   const save = useGameStore((s) => s.save);
   const updatePlayer = useGameStore((s) => s.updatePlayer);
   const lastSave = useGameStore((s) => s.lastSave);
@@ -22,12 +22,10 @@ export function TownScreen() {
     const newStats = { ...player.stats, hp: player.stats.maxHp, mp: player.stats.maxMp };
     updatePlayer({ stats: newStats });
     save();
-    addLog('Rested at the Inn. HP and MP fully restored. Game saved.', 'system');
+    addLog('Rested at the Inn. HP/MP restored. Game saved.', 'system');
   };
 
   const handleEnterDungeon = () => {
-    // Preserve an in-progress dungeon so fleeing doesn't wipe the run.
-    // Only generate a fresh floor when there is no dungeon or it belongs to another floor.
     const existing = useGameStore.getState().dungeon;
     if (existing && existing.floor === player.floor) {
       addLog(`Resuming dungeon floor ${player.floor}...`, 'system');
@@ -48,73 +46,58 @@ export function TownScreen() {
     setScreen('dungeon');
   };
 
+  const goStats = (from: 'town') => {
+    setStatsReturn(from);
+    setScreen('stats');
+  };
+
+  const goShop = (shop: 'blacksmith' | 'potion_shop' | 'magic_shop') => {
+    setSelectedShop(shop, 'town');
+    setScreen('shop');
+  };
+
+  const points = player.statPoints ?? 0;
+  const checkpoint = isCheckpointFloor(player.floor);
+
   return (
-    <div className="flex flex-col items-center gap-6 animate-fade-in">
-      <div className="text-terminal-green text-xs tracking-widest">[ TOWN OF HAVEN ]</div>
-
-      <h1 className="text-terminal-cyan text-xl tracking-widest uppercase">
-        {'=== Town of Haven ==='}
-      </h1>
-
-      <p className="text-terminal-dim text-sm text-center max-w-md">
-        A safe haven between dungeon runs. Visit the shops, rest at the Inn,
-        or enter the dungeon when ready.
-      </p>
-
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full max-w-lg">
-        <Button onClick={() => { setSelectedShop('blacksmith', 'town'); setScreen('shop'); }}>
-          {'[BSM] Blacksmith'}
-        </Button>
-        <Button onClick={() => { setSelectedShop('potion_shop', 'town'); setScreen('shop'); }}>
-          {'[POT] Potions'}
-        </Button>
-        <Button onClick={() => { setSelectedShop('magic_shop', 'town'); setScreen('shop'); }}>
-          {'[MAG] Magic Shop'}
-        </Button>
-        <Button onClick={() => setScreen('inventory')}>
-          {'[INV] Inventory'}
-        </Button>
-        <Button onClick={handleRest}>
-          {'[INN] Rest & Save'}
-        </Button>
-        <Button onClick={() => setScreen('questBoard')}>
-          {'[GLD] Guild Board'}
-        </Button>
-        <Button variant="danger" onClick={handleEnterDungeon} glow>
-          {dungeon && dungeon.floor === player.floor ? '[DGN] Resume Dungeon' : '[DGN] Enter Dungeon'}
-        </Button>
+    <div className="flex flex-col min-h-[70vh] justify-center gap-5 animate-fade-in max-w-md mx-auto">
+      <div className="text-center">
+        <div className="text-terminal-green text-xs tracking-widest">[ TOWN OF HAVEN ]</div>
+        <div className="text-terminal-dim text-[11px] mt-1">Rest, resupply, then descend.</div>
       </div>
 
-      <div className="w-full max-w-md">
-        <StatAllocationPanel />
+      <Button variant="danger" onClick={handleEnterDungeon} glow className="w-full">
+        {dungeon && dungeon.floor === player.floor ? 'Resume Dungeon' : 'Enter Dungeon'}
+      </Button>
+
+      <div className="grid grid-cols-2 gap-2 w-full">
+        <Button onClick={handleRest}>Inn</Button>
+        <Button onClick={() => goStats('town')}>
+          {points > 0 ? `Stats (${points})` : 'Stats'}
+        </Button>
+        <Button onClick={() => setScreen('questBoard')}>Quests</Button>
+        <Button onClick={() => setScreen('inventory')}>Inventory</Button>
       </div>
 
-      {(dungeon || lastSave) && (
-        <Panel title="Last Run" className="w-full max-w-md">
-          <div className="text-xs space-y-1">
-            {dungeon && (
-              <div className="flex justify-between">
-                <span className="text-terminal-dim">Floor Reached</span>
-                <span className="text-terminal-yellow">{dungeon.floor}</span>
-              </div>
-            )}
-            <div className="flex justify-between">
-              <span className="text-terminal-dim">Best Floor</span>
-              <span className="text-terminal-yellow">{Math.max(stats.bestFloor, player.floor)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-terminal-dim">Bosses Slain</span>
-              <span className="text-terminal-yellow">{stats.bossesKilled}</span>
-            </div>
-            {lastSave && (
-              <div className="flex justify-between">
-                <span className="text-terminal-dim">Last Saved</span>
-                <span className="text-terminal-dim">{new Date(lastSave).toLocaleTimeString()}</span>
-              </div>
-            )}
-          </div>
-        </Panel>
-      )}
+      <Panel title="Shops — resupply here" titleAlign="center">
+        <div className="flex flex-col gap-2">
+          <Button size="sm" variant="ghost" className="w-full" onClick={() => goShop('blacksmith')}>
+            Blacksmith <span className="text-terminal-dim normal-case">— weapons & armor</span>
+          </Button>
+          <Button size="sm" variant="ghost" className="w-full" onClick={() => goShop('potion_shop')}>
+            Potion Shop <span className="text-terminal-dim normal-case">— HP & MP</span>
+          </Button>
+          <Button size="sm" variant="ghost" className="w-full" onClick={() => goShop('magic_shop')}>
+            Magic Shop <span className="text-terminal-dim normal-case">— charms & spells</span>
+          </Button>
+        </div>
+      </Panel>
+
+      <div className="text-center text-[11px] text-terminal-dim">
+        Floor {player.floor} · Best {Math.max(stats.bestFloor, player.floor)} · Bosses {stats.bossesKilled}
+        {!checkpoint && <span> · checkpoint at floor {Math.ceil(player.floor / 5) * 5}</span>}
+        {lastSave && <span> · saved {new Date(lastSave).toLocaleTimeString()}</span>}
+      </div>
     </div>
   );
 }

@@ -1,10 +1,10 @@
 import { useEffect, useRef, useMemo, useCallback } from 'react';
-import { useGameStore } from '../../game/store/gameStore';
+import { useGameStore, isCheckpointFloor } from '../../game/store/gameStore';
 import { useUIStore } from '../../game/store/uiStore';
 import { Button } from '../ui/Button';
 import { Panel } from '../ui/Panel';
 import { LogPanel } from '../terminal/LogPanel';
-import { generateDungeon, getAdjacentRooms } from '../../game/systems/dungeonGenerator';
+import { generateDungeon, getAdjacentRooms, isBossFloor } from '../../game/systems/dungeonGenerator';
 import { getFloorTheme } from '../../game/data/ascii';
 import { useKeyboard } from '../../hooks/useKeyboard';
 import type { Room } from '../../types/game';
@@ -142,12 +142,28 @@ export function DungeonScreen() {
 
   const handleDescend = useCallback(() => {
     const p = playerRef.current;
-    if (!p) return;
+    const d = dungeonRef.current;
+    if (!p || !d) return;
+    // Boss gate: stairs stay sealed while the floor boss lives.
+    if (isBossFloor(d.floor)) {
+      const bossAlive = d.rooms.flat().some((r) => r.type === 'boss' && r.enemy);
+      if (bossAlive) {
+        addLog('The boss blocks the stairs! Defeat it first (▲).', 'danger');
+        return;
+      }
+    }
     const nextFloor = p.floor + 1;
     updatePlayer({ floor: nextFloor });
     const newDungeon = generateDungeon(nextFloor);
     setDungeon(newDungeon);
-    addLog(`Descended to floor ${nextFloor}.`, 'system');
+    if (isBossFloor(nextFloor)) {
+      addLog(`Descended to floor ${nextFloor} — BOSS. Checkpoint saved.`, 'system');
+    } else if (isCheckpointFloor(nextFloor)) {
+      addLog(`Descended to floor ${nextFloor}. Checkpoint saved.`, 'system');
+    } else {
+      const nextCheckpoint = Math.ceil(nextFloor / 5) * 5;
+      addLog(`Descended to floor ${nextFloor}. Unsaved — reach floor ${nextCheckpoint} to save.`, 'system');
+    }
     const st = useGameStore.getState();
     st.updateQuestProgress('floor', 'any', nextFloor);
     useGameStore.setState((s) => ({
@@ -157,7 +173,17 @@ export function DungeonScreen() {
   }, [addLog, setDungeon, updatePlayer]);
 
   const handleFlee = useCallback(() => {
-    addLog('Fled to town. Your dungeon position is preserved — re-enter to resume.', 'system');
+    const d = dungeonRef.current;
+    if (d && !isCheckpointFloor(d.floor)) {
+      // Leaving before 5/10/15/... discards the map — not saved.
+      const nextCheckpoint = Math.ceil(d.floor / 5) * 5;
+      useGameStore.getState().setDungeon(null);
+      addLog(`Fled floor ${d.floor}. Unsaved — progress before floor ${nextCheckpoint} is lost.`, 'system');
+    } else if (d) {
+      addLog(`Fled to town. Checkpoint floor ${d.floor} saved — re-enter to resume.`, 'system');
+    } else {
+      addLog('Fled to town.', 'system');
+    }
     setScreen('town');
   }, [addLog, setScreen]);
 
@@ -185,9 +211,7 @@ export function DungeonScreen() {
 
   const currentRoom: Room = dungeon.rooms[dungeon.playerPos.y][dungeon.playerPos.x];
   const theme = getFloorTheme(dungeon.floor);
-  const isBossFloor = dungeon.floor % 5 === 0;
-  const exploredCount = dungeon.rooms.flat().filter((r) => r.explored).length;
-  const totalRooms = dungeon.gridSize * dungeon.gridSize;
+  const bossFloor = isBossFloor(dungeon.floor);
 
   const isAdjacent = (x: number, y: number) =>
     Math.abs(x - dungeon.playerPos.x) + Math.abs(y - dungeon.playerPos.y) === 1;
@@ -236,106 +260,83 @@ export function DungeonScreen() {
   };
 
   const roomDescription = (room: Room): string => {
-    if (!room.explored) return 'Unexplored darkness.';
+    if (!room.explored) return 'Unexplored.';
     switch (room.type) {
-      case 'monster': return 'Monster lair — combat awaits!';
-      case 'elite': return 'Elite den — tougher foe, better loot!';
-      case 'boss': return 'BOSS chamber — steel yourself!';
-      case 'treasure': return room.item ? `Treasure: ${room.item.name}` : 'Looted chest.';
-      case 'trap': return room.trapDamage ? 'Armed trap — watch out!' : 'Disarmed trap.';
-      case 'shrine': return 'Glowing shrine — restores 30% HP/MP.';
-      case 'shop': return 'Merchant camp — press to trade.';
-      case 'stairs': return 'Stairs down — press E to descend.';
-      case 'start': return 'Dungeon entrance.';
-      default: return 'Cleared room. Safe… for now.';
+      case 'monster': return 'Monster — fight!';
+      case 'elite': return 'Elite — better loot!';
+      case 'boss': return 'BOSS — steel yourself!';
+      case 'treasure': return room.item ? `Treasure: ${room.item.name}` : 'Looted.';
+      case 'trap': return room.trapDamage ? 'Trap!' : 'Disarmed.';
+      case 'shrine': return 'Shrine — +30% HP/MP.';
+      case 'shop': return 'Merchant.';
+      case 'stairs': return 'Stairs — E to descend.';
+      case 'start': return 'Entrance.';
+      default: return 'Cleared.';
     }
   };
 
   const isCurrentStairs = currentRoom.type === 'stairs';
 
   return (
-    <div className="flex flex-col gap-4 animate-fade-in">
+    <div className="flex flex-col gap-3 animate-fade-in max-w-md mx-auto">
       <div className="flex items-center justify-between">
-        <h1 className={`text-lg tracking-widest ${theme.labelClass}`}>
+        <h1 className={`text-sm tracking-widest ${theme.labelClass}`}>
           {theme.label}
         </h1>
-        <span className="text-terminal-dim text-[11px]">
-          Explored {exploredCount}/{totalRooms}
-        </span>
         <Button variant="ghost" size="sm" onClick={handleFlee}>
-          {'[Flee to Town]'}
+          {'[Flee]'}
         </Button>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-4">
-        <Panel title={isBossFloor ? 'Dungeon Map — Boss Floor' : 'Dungeon Map'} className={`flex-shrink-0 ${isBossFloor ? 'border-terminal-red/50' : ''}`}>
-          <div className={`flex flex-col items-center gap-1 font-mono p-2 bg-terminal-bg/50 border ${theme.frame}`}>
-            {dungeon.rooms.map((row, y) => (
-              <div key={y} className="flex gap-1">
-                {row.map((room, x) => (
-                  <button
-                    key={`${x}-${y}`}
-                    onClick={() => handleCellClick(x, y)}
-                    disabled={!isAdjacent(x, y)}
-                    aria-label={`Move to ${x},${y} ${room.explored ? room.type : 'unexplored'}${isAdjacent(x, y) ? ' (adjacent)' : ''}`}
-                    title={room.explored ? `${room.type} (${x},${y})` : `Unexplored (${x},${y})${isAdjacent(x, y) ? ' — click to move' : ''}`}
-                    className={`w-9 h-9 sm:w-8 sm:h-8 flex items-center justify-center text-sm font-bold border transition-all
-                      ${roomStyle(room)} ${
-                      isAdjacent(x, y) ? 'cursor-pointer hover:scale-105' : room.x === dungeon.playerPos.x && room.y === dungeon.playerPos.y ? '' : 'cursor-default'
-                    }`}
-                  >
-                    {roomTypeSymbol(room)}
-                  </button>
-                ))}
-              </div>
-            ))}
-          </div>
-          <div className="mt-2 text-[10px] text-terminal-dim">You are here: ({dungeon.playerPos.x},{dungeon.playerPos.y}) — {roomDescription(currentRoom)}</div>
-          <div className="mt-2 text-[10px] text-terminal-dim flex flex-wrap gap-x-3 gap-y-1">
-            <span><span className="text-terminal-cyan font-bold">◎</span> You</span>
-            <span><span className="text-terminal-red font-bold">◆</span> Monster</span>
-            <span><span className="text-terminal-yellow font-bold">◈</span> Elite</span>
-            <span><span className="text-terminal-cyan font-bold">+</span> Shrine</span>
-            <span><span className="text-terminal-yellow font-bold">●</span> Treasure</span>
-            <span><span className="text-terminal-red">×</span> Trap</span>
-            <span><span className="text-terminal-green font-bold">$</span> Shop</span>
-            <span><span className="text-terminal-cyan font-bold">▼</span> Stairs</span>
-            <span><span className="text-terminal-red font-bold">▲</span> Boss</span>
-            <span><span className="text-terminal-dim">░</span> Fog</span>
-          </div>
-          <div className="mt-1 text-[10px] text-terminal-dim">Tip: glowing tiles are reachable — click/tap to move. WASD/arrows work too. Press E on stairs to descend.</div>
-        </Panel>
-
-        <div className="flex-1 flex flex-col gap-3">
-          <Panel title="Actions">
-            <div className="grid grid-cols-3 gap-2">
-              <div />
-              <Button size="sm" onClick={() => handleMove(0, -1)} disabled={!adjacentRooms.up} aria-label="Move north">
-                {'^'} North
-              </Button>
-              <div />
-              <Button size="sm" onClick={() => handleMove(-1, 0)} disabled={!adjacentRooms.left} aria-label="Move west">
-                {'<'} West
-              </Button>
-              <Button size="sm" onClick={() => handleMove(0, 1)} disabled={!adjacentRooms.down} aria-label="Move south">
-                {'v'} South
-              </Button>
-              <Button size="sm" onClick={() => handleMove(1, 0)} disabled={!adjacentRooms.right} aria-label="Move east">
-                {'>'} East
-              </Button>
+      <Panel title={bossFloor ? 'Map — Boss' : 'Map'} className={bossFloor ? 'border-terminal-red/50' : ''}>
+        <div className={`flex flex-col items-center gap-1 font-mono p-2 bg-terminal-bg/50 border ${theme.frame}`}>
+          {dungeon.rooms.map((row, y) => (
+            <div key={y} className="flex gap-1">
+              {row.map((room, x) => (
+                <button
+                  key={`${x}-${y}`}
+                  onClick={() => handleCellClick(x, y)}
+                  disabled={!isAdjacent(x, y)}
+                  aria-label={`Move to ${x},${y}`}
+                  className={`w-9 h-9 flex items-center justify-center text-sm font-bold border
+                    ${roomStyle(room)} ${
+                    isAdjacent(x, y) ? 'cursor-pointer' : 'cursor-default'
+                  }`}
+                >
+                  {roomTypeSymbol(room)}
+                </button>
+              ))}
             </div>
-            {isCurrentStairs && (
-              <div className="mt-2">
-                <Button size="sm" onClick={handleDescend} glow className="w-full">
-                  {'>>'} Descend to Floor {dungeon.floor + 1} (E)
-                </Button>
-              </div>
-            )}
-          </Panel>
-
-          <LogPanel />
+          ))}
         </div>
+        <div className="mt-1 text-[11px] text-terminal-dim truncate">
+          ({dungeon.playerPos.x},{dungeon.playerPos.y}) — {roomDescription(currentRoom)}
+        </div>
+      </Panel>
+
+      <div className="grid grid-cols-3 gap-2">
+        <div />
+        <Button size="sm" onClick={() => handleMove(0, -1)} disabled={!adjacentRooms.up} aria-label="Move north">
+          {'^'}
+        </Button>
+        <div />
+        <Button size="sm" onClick={() => handleMove(-1, 0)} disabled={!adjacentRooms.left} aria-label="Move west">
+          {'<'}
+        </Button>
+        <Button size="sm" onClick={() => handleMove(0, 1)} disabled={!adjacentRooms.down} aria-label="Move south">
+          {'v'}
+        </Button>
+        <Button size="sm" onClick={() => handleMove(1, 0)} disabled={!adjacentRooms.right} aria-label="Move east">
+          {'>'}
+        </Button>
       </div>
+      {isCurrentStairs && (
+        <Button size="sm" onClick={handleDescend} glow className="w-full">
+          {'>>'} Descend (E)
+        </Button>
+      )}
+
+      <LogPanel />
     </div>
   );
 }

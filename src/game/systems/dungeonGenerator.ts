@@ -5,6 +5,13 @@ import { randomInt, pickRandom, chance } from '../../utils/rng';
 
 const GRID_SIZE = 5;
 
+/** Boss floors double as save checkpoints: 5, 10, 15, ... */
+export const CHECKPOINT_INTERVAL = 5;
+
+export function isBossFloor(floor: number): boolean {
+  return floor % CHECKPOINT_INTERVAL === 0;
+}
+
 // Shop balance: at most 0-1 shops per floor (30% chance), with a pity
 // timer that forces 1 shop if 3 consecutive floors spawned without one.
 const SHOP_SPAWN_CHANCE = 0.3;
@@ -37,14 +44,14 @@ export function generateDungeon(floor: number): DungeonState {
   rooms[0][0].type = 'start';
   rooms[0][0].explored = true;
 
-  const isBossFloor = floor % 5 === 0;
+  const bossFloor = isBossFloor(floor);
   // Shops are placed separately (0-1 per floor) so they don't flood the map.
   const roomTypes: RoomType[] = ['monster', 'monster', 'treasure', 'trap', 'empty', 'empty'];
 
   // Stairs always exist so the player can descend; on boss floors the boss
   // guards the room right before the stairs.
   rooms[GRID_SIZE - 1][GRID_SIZE - 1].type = 'stairs';
-  if (isBossFloor) {
+  if (bossFloor) {
     rooms[GRID_SIZE - 1][GRID_SIZE - 2].type = 'boss';
   }
 
@@ -53,7 +60,7 @@ export function generateDungeon(floor: number): DungeonState {
       if (rooms[y][x].type !== 'empty') continue;
       if (x === 0 && y === 0) continue;
       if (x === GRID_SIZE - 1 && y === GRID_SIZE - 1) continue;
-      if (isBossFloor && x === GRID_SIZE - 1 && y === GRID_SIZE - 2) continue;
+      if (bossFloor && x === GRID_SIZE - 1 && y === GRID_SIZE - 2) continue;
       let t = pickRandom(roomTypes);
       // Promote some monsters to elites on floor 2+
       if (t === 'monster' && floor >= 2 && chance(0.12)) t = 'elite';

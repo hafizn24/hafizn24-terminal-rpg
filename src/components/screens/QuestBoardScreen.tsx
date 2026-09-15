@@ -3,7 +3,6 @@ import { useGameStore } from '../../game/store/gameStore';
 import { useUIStore } from '../../game/store/uiStore';
 import { Button } from '../ui/Button';
 import { Panel } from '../ui/Panel';
-import { ProgressBar } from '../ui/ProgressBar';
 import { generateDailyQuests, generateSideQuests, checkDailyReset } from '../../game/systems/questSystem';
 
 const DAILY_RESET_KEY = 'terminal_rpg_daily_reset';
@@ -114,13 +113,9 @@ export function QuestBoardScreen() {
                     </span>
                   </div>
                   <div className="text-terminal-dim text-xs mb-2">{quest.description}</div>
-                  <ProgressBar
-                    current={quest.progress}
-                    max={quest.objective.required}
-                    label=""
-                    color="green"
-                    showText={true}
-                  />
+                  <div className="text-[11px] text-terminal-dim mb-1">
+                    Progress: <span className="text-terminal-green">{quest.progress}/{quest.objective.required}</span>
+                  </div>
                   <div className="flex items-center justify-between mt-1">
                     <div className="text-terminal-dim text-[10px]">
                       Reward: {quest.reward.gold}g, {quest.reward.exp} EXP

@@ -5,7 +5,7 @@ interface TerminalWindowProps {
   children: ReactNode;
 }
 
-export function TerminalWindow({ title = 'Terminal RPG v0.1', children }: TerminalWindowProps) {
+export function TerminalWindow({ title = 'Terminal RPG v0.2', children }: TerminalWindowProps) {
   return (
     <div className="h-screen w-screen flex flex-col bg-terminal-bg overflow-hidden">
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-terminal-dim bg-terminal-panel">

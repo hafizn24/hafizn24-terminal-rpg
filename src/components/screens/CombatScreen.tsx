@@ -6,39 +6,9 @@ import { Panel } from '../ui/Panel';
 import { ProgressBar } from '../ui/ProgressBar';
 import { calcDamage, calcCritChance, calcDodgeChance, chance, pickRandom } from '../../utils/rng';
 import { CLASSES } from '../../game/data/classes';
-import { ELITE_CROWN_ART, BOSS_AURA_TOP, BOSS_AURA_BOTTOM, isBossEnemy } from '../../game/data/ascii';
+import { isBossEnemy } from '../../game/data/ascii';
 import type { Enemy, EnemySkill } from '../../types/game';
 import { useKeyboard } from '../../hooks/useKeyboard';
-
-const CLASS_ASCII: Record<string, string> = {
-  warrior: `
-   /│▓▓▓\\
-   │░▓█▓░│
-   │▓███▓│
-  /│█\\░/█│\\
-   │▓█░█▓│
-  /│▓█░█▓│\\`,
-  mage: `
-     /\\
-   (░▓░)
-   │\\/\\│
-   │░█░│
-  /│▓█▓│\\
-   │▓█▓│`,
-  rogue: `
-   /--\\
-   │<█>│
-   │░▓░│
-  /│▓█▓│\\
-   │▓█▓│
-  /░▓█▓░\\`,
-  cleric: `
-    (+)
-   \\│█│/
-   ▓│█│▓
-   /│█│\\
-   ▓│█│▓`,
-};
 
 /**
  * Per-class skill scaling so each class feels different:
@@ -116,17 +86,8 @@ export function CombatScreen() {
     enemyStatus: null,
     round: 1,
   });
-  // Combat log follows new entries only while enabled — toggling it off
-  // freezes the scroll so players can read history mid-fight. It only ever
-  // scrolls its own container, never the page/window.
-  const [autoFollow, setAutoFollow] = useState(true);
-  const combatLogRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!autoFollow) return;
-    const el = combatLogRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [state.combatLog, autoFollow]);
+  // Single-line combat log: only the latest entry is shown, fixed height,
+  // never expands. Full history stays in the global log (dungeon LogPanel).
 
   const enemyRef = useRef<Enemy | null>(null);
   const playerRef = useRef(player);
@@ -663,115 +624,56 @@ export function CombatScreen() {
   const bombCount = bombs.reduce((a, s) => a + s.quantity, 0);
   const smokeCount = smokes.reduce((a, s) => a + s.quantity, 0);
 
-  const playerAtk = player.stats.str + (player.equipment.weapon?.statBonus?.str || 0) + (player.equipment.accessory?.statBonus?.str || 0);
   const playerDef =
     Math.floor((player.equipment.armor?.statBonus?.hp || 0) / 5) +
     Math.floor((player.equipment.accessory?.statBonus?.hp || 0) / 5);
-  const playerCrit = Math.round(
-    calcCritChance(player.stats.dex + (player.equipment.accessory?.statBonus?.dex || 0)) * 100
-  );
-  const playerDodge = Math.round(
-    calcDodgeChance(player.stats.dex + (player.equipment.accessory?.statBonus?.dex || 0), enemy.stats.dex, state.guarding) * 100
-  );
   const intentBase = state.intent ? Math.floor(enemy.attack * state.intent.power) : enemy.attack;
   const intentMin = Math.max(1, Math.floor((intentBase - playerDef * 0.5) * 0.85));
   const intentMax = Math.max(1, Math.floor((intentBase - playerDef * 0.5) * 1.15));
   const boss = isBossEnemy(enemy);
   const enemyFrame = enemy.isElite
-    ? 'border-terminal-yellow shadow-[0_0_12px_rgba(255,215,0,0.25)]'
+    ? 'border-terminal-yellow'
     : boss
-      ? 'border-terminal-red shadow-[0_0_16px_rgba(255,0,64,0.35)]'
-      : 'border-terminal-dim/40';
+      ? 'border-terminal-red'
+      : '';
+  const latestLog = state.combatLog[state.combatLog.length - 1] ?? '';
 
   return (
-    <div className={`flex flex-col gap-4 animate-fade-in max-w-2xl mx-auto ${state.shaking ? 'animate-[shake_0.3s_ease-in-out]' : ''}`}>
-      <h1 className="text-terminal-red text-lg tracking-widest uppercase text-center">
-        {'<< Combat >>'}
-        <span className="text-terminal-dim text-xs ml-2">Round {state.round}</span>
-      </h1>
-
-      <div className="flex flex-col sm:flex-row gap-4">
-        <Panel title={enemy.isElite ? `ELITE ${enemy.name}` : enemy.name} className={`flex-1 relative ${enemyFrame}`}>
-          {enemy.isElite && (
-            <pre
-              className="text-terminal-yellow text-xs text-center whitespace-pre leading-tight font-mono"
-              style={{ textShadow: '0 0 8px currentColor' }}
-              aria-label="Elite crown"
-            >
-              {ELITE_CROWN_ART}
-            </pre>
-          )}
-          {boss && !enemy.isElite && (
-            <pre
-              className="text-terminal-red text-xs text-center whitespace-pre leading-tight font-mono opacity-80"
-              aria-hidden="true"
-            >
-              {BOSS_AURA_TOP}
-            </pre>
-          )}
-          <pre
-            className={`text-xs text-center mb-2 whitespace-pre leading-tight font-mono ${
-              enemy.isElite ? 'text-terminal-yellow' : boss ? 'text-terminal-red animate-pulse-glow' : 'text-terminal-red'
-            }`}
-            style={{ textShadow: '0 0 8px currentColor' }}
-            aria-label={`${enemy.name} artwork`}
-          >
-            {enemy.ascii}
-          </pre>
-          {boss && (
-            <pre
-              className="text-terminal-red text-xs text-center whitespace-pre leading-tight font-mono opacity-80"
-              aria-hidden="true"
-            >
-              {BOSS_AURA_BOTTOM}
-            </pre>
-          )}
-          <ProgressBar current={state.enemyHp} max={state.enemyMaxHp} label="HP" color="red" />
-          <div className="mt-1 text-[10px] text-terminal-dim text-center">
-            ATK {enemy.attack} · DEF {enemy.defense} · DEX {enemy.stats.dex}
-          </div>
-          <div className="mt-1 text-[11px] text-center" aria-live="polite">
-            {state.intent ? (
-              <span className="text-terminal-yellow">Intent: {state.intent.name} (~{intentMin}-{intentMax} dmg)</span>
-            ) : (
-              <span className="text-terminal-dim">Intent: Attack (~{intentMin}-{intentMax} dmg)</span>
-            )}
-            {state.enemyStatus && (
-              <span className="text-terminal-red ml-2">[{state.enemyStatus.id} {state.enemyStatus.turns}t]</span>
-            )}
-          </div>
-        </Panel>
-
-        <div className="flex-1 flex flex-col gap-2">
-          <div className="text-center text-terminal-cyan text-xs font-mono">— VS —</div>
-          <Panel title={player.name} className="flex-1">
-            <pre className="text-terminal-cyan text-xs text-center mb-1 whitespace-pre leading-tight" style={{ textShadow: '0 0 8px currentColor' }}>
-              {CLASS_ASCII[player.class] ?? CLASS_ASCII.warrior}
-            </pre>
-          <div className="text-xs text-terminal-dim mb-2 text-center uppercase">
-            {player.class} - Level {player.level}
-            {state.guarding && <span className="text-terminal-cyan ml-2">[GUARDING]</span>}
-            {state.playerStatus && (
-              <span className="text-terminal-red ml-2">[{state.playerStatus.id} {state.playerStatus.turns}t]</span>
-            )}
-          </div>
-          <div className="space-y-1">
-            <ProgressBar current={player.stats.hp} max={player.stats.maxHp} label="HP" color="red" />
-            <ProgressBar current={player.stats.mp} max={player.stats.maxMp} label="MP" color="cyan" />
-          </div>
-          <div className="mt-1 text-[10px] text-terminal-dim text-center">
-            ATK {playerAtk} · DEF {playerDef} · CRIT {playerCrit}% · DODGE {playerDodge}%
-          </div>
-          {classDef && (
-            <div className="mt-2 text-[11px] text-terminal-dim text-center">
-              Skill: {classDef.skill.name} ({classDef.skill.mpCost} MP) — {classDef.skill.description}
-            </div>
-          )}
-        </Panel>
-        </div>
+    <div className={`flex flex-col gap-3 animate-fade-in max-w-md mx-auto ${state.shaking ? 'animate-[shake_0.3s_ease-in-out]' : ''}`}>
+      <div className="text-center text-terminal-red text-sm tracking-widest uppercase">
+        {enemy.isElite ? `Elite ${enemy.name}` : enemy.name}
+        <span className="text-terminal-dim text-[11px] ml-2">R{state.round}</span>
       </div>
 
-      <div className="relative">
+      <Panel title={boss ? 'Boss' : 'Enemy'} className={enemyFrame}>
+        <ProgressBar current={state.enemyHp} max={state.enemyMaxHp} label="HP" color="red" />
+        <div className="mt-1 text-[11px] text-terminal-dim text-center truncate">
+          {state.intent ? (
+            <span className="text-terminal-yellow">{state.intent.name} (~{intentMin}-{intentMax})</span>
+          ) : (
+            <span>Attack (~{intentMin}-{intentMax})</span>
+          )}
+          {state.enemyStatus && (
+            <span className="text-terminal-red ml-2">[{state.enemyStatus.id}]</span>
+          )}
+        </div>
+      </Panel>
+
+      <Panel title="You">
+        <ProgressBar current={player.stats.hp} max={player.stats.maxHp} label="HP" color="red" />
+        <div className="mt-1">
+          <ProgressBar current={player.stats.mp} max={player.stats.maxMp} label="MP" color="cyan" />
+        </div>
+        <div className="mt-1 text-[11px] text-terminal-dim text-center truncate">
+          {classDef ? `${classDef.skill.name} (${classDef.skill.mpCost})` : '—'}
+          {state.guarding && <span className="text-terminal-cyan"> · GUARD</span>}
+          {state.playerStatus && (
+            <span className="text-terminal-red"> · [{state.playerStatus.id}]</span>
+          )}
+        </div>
+      </Panel>
+
+      <div className="relative h-0">
         {state.damageNumbers.map((d) => (
           <div
             key={d.id}
@@ -783,34 +685,9 @@ export function CombatScreen() {
         ))}
       </div>
 
-      <Panel title="Combat Log">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-[10px] text-terminal-dim">Round {state.round} · newest at bottom</span>
-          <button
-            onClick={() => setAutoFollow((v) => !v)}
-            className="text-[10px] text-terminal-dim hover:text-terminal-green border border-terminal-dim/30 px-1.5 py-0.5"
-            aria-pressed={autoFollow}
-            title={autoFollow ? 'Stop auto-scrolling the combat log' : 'Resume auto-scrolling to newest entries'}
-          >
-            {autoFollow ? '[Follow: ON]' : '[Follow: OFF]'}
-          </button>
-        </div>
-        <div ref={combatLogRef} className="max-h-32 overflow-y-auto text-xs space-y-1" aria-live="polite">
-          {state.combatLog.map((msg, i) => (
-            <div key={i} className="text-terminal-dim animate-fade-in">
-              <span className="text-terminal-green mr-1">&gt;</span>
-              {msg}
-            </div>
-          ))}
-          {!state.isPlayerTurn && !state.isOver && (
-            <div className="text-terminal-yellow animate-pulse">Enemy acting…</div>
-          )}
-        </div>
-      </Panel>
-
       {!state.isOver && (
         <div className="flex flex-col gap-2">
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <Button onClick={handleAttack} disabled={!state.isPlayerTurn}>
               {'[1] Attack'}
             </Button>
@@ -823,15 +700,12 @@ export function CombatScreen() {
             <Button variant="danger" onClick={handleRun} disabled={!state.isPlayerTurn}>
               {'[4] Run'}
             </Button>
-            <Button onClick={handleGuard} disabled={!state.isPlayerTurn}>
-              {'[5] Guard'}
-            </Button>
-            <div className="hidden sm:flex items-center justify-center text-[10px] text-terminal-dim">
-              Enter=Atk Esc=Run G=Guard
-            </div>
           </div>
+          <Button onClick={handleGuard} disabled={!state.isPlayerTurn}>
+            {'[5] Guard'}
+          </Button>
           {(bombCount > 0 || smokeCount > 0) && (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex gap-2">
               {bombs.map((s) => (
                 <Button key={s.item.id} size="sm" onClick={() => handleUseItemId(s.item.id)} disabled={!state.isPlayerTurn}>
                   {`Bomb x${s.quantity}`}
@@ -844,15 +718,20 @@ export function CombatScreen() {
               ))}
             </div>
           )}
-          {!canAffordSkill && classDef && (
-            <div className="text-[11px] text-terminal-yellow text-center">Not enough MP for {classDef.skill.name} — Guard to recover 5 MP.</div>
-          )}
         </div>
       )}
 
+      <div className="border border-terminal-dim/40 px-2 h-7 flex items-center overflow-hidden" aria-live="polite">
+        <span className="text-terminal-green mr-1 font-mono text-xs shrink-0">&gt;</span>
+        <span className="text-terminal-dim text-xs truncate whitespace-nowrap overflow-hidden">
+          {latestLog}
+          {!state.isPlayerTurn && !state.isOver && ' …'}
+        </span>
+      </div>
+
       {state.isOver && (
         <div className="text-center">
-          <span className={state.won ? 'text-terminal-yellow text-lg animate-pulse-glow' : 'text-terminal-red text-lg'}>
+          <span className={state.won ? 'text-terminal-yellow' : 'text-terminal-red'}>
             {state.won ? 'VICTORY!' : 'DEFEATED!'}
           </span>
         </div>

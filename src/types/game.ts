@@ -7,6 +7,7 @@ export type Screen =
   | 'dungeon'
   | 'combat'
   | 'inventory'
+  | 'stats'
   | 'gameOver'
   | 'shop'
   | 'questBoard';
