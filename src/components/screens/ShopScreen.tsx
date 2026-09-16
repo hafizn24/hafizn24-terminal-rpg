@@ -6,6 +6,7 @@ import { Button } from '../ui/Button';
 import { Panel } from '../ui/Panel';
 import { ITEMS, SHOP_STOCK } from '../../game/data/items';
 import { getRarityColor } from '../../utils/rng';
+import { playSfx } from '../../utils/audio';
 import type { Item } from '../../types/game';
 
 type ShopMode = 'buy' | 'sell';
@@ -89,6 +90,7 @@ export function ShopScreen() {
 
     updatePlayer({ gold: player.gold - item.price, inventory: newInv });
     useGameStore.getState().save();
+    playSfx('gold');
     addLog(`Bought ${item.name} for ${item.price} gold. (Autosaved)`, 'loot');
   };
 

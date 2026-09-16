@@ -1,4 +1,5 @@
 import type { Quest } from '../../types/game';
+import { ENEMIES } from '../data/enemies';
 import { shuffleArray } from '../../utils/rng';
 
 
@@ -70,10 +71,22 @@ const QUEST_TEMPLATES = [
     reward: { gold: 250, exp: 150, itemId: 'steel_sword' },
   },
   {
-    name: 'Undead Purifier',
-    description: 'Defeat 5 skeletons.',
-    objective: { type: 'kill' as const, target: 'skeleton', required: 5 },
-    reward: { gold: 110, exp: 70 },
+    name: 'Shell Cracker',
+    description: 'Defeat 3 armored slimes. Bring skills, not fists.',
+    objective: { type: 'kill' as const, target: 'armored_slime', required: 3 },
+    reward: { gold: 130, exp: 85 },
+  },
+  {
+    name: 'Bomb Squad',
+    description: 'Defeat 2 volatile slimes. Kill them from full HP.',
+    objective: { type: 'kill' as const, target: 'volatile_slime', required: 2 },
+    reward: { gold: 140, exp: 95 },
+  },
+  {
+    name: 'Golem Breaker',
+    description: 'Defeat an iron golem.',
+    objective: { type: 'kill' as const, target: 'iron_golem', required: 1 },
+    reward: { gold: 220, exp: 140 },
   },
 ];
 
@@ -92,8 +105,22 @@ export function generateDailyQuests(date = new Date()): Quest[] {
   }));
 }
 
-export function generateSideQuests(_floor: number): Quest[] {
-  const shuffled = shuffleArray(QUEST_TEMPLATES);
+/**
+ * Side-quest offers filtered by depth: kill targets must have surfaced
+ * (enemy minFloor reached) and floor goals stay within sight (+3).
+ */
+export function generateSideQuests(floor: number): Quest[] {
+  const minFloorOf = (target: string): number => {
+    if (target === 'any') return 1;
+    return ENEMIES.find((e) => e.id === target)?.minFloor ?? 1;
+  };
+  const eligible = QUEST_TEMPLATES.filter((t) => {
+    if (t.objective.type === 'kill') return minFloorOf(t.objective.target) <= floor;
+    if (t.objective.type === 'floor') return t.objective.required <= floor + 3;
+    return true;
+  });
+  const pool = eligible.length > 0 ? eligible : QUEST_TEMPLATES;
+  const shuffled = shuffleArray(pool);
   return shuffled.slice(0, 2).map((template) => ({
     id: `side_${template.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
     name: template.name,
@@ -110,9 +137,6 @@ export function checkQuestProgress(quest: Quest, eventType: string, target: stri
   if (quest.completed) return false;
   if (quest.objective.type !== eventType) return false;
   if (quest.objective.type === 'kill') {
-    return quest.objective.target === 'any' || quest.objective.target === target;
-  }
-  if (quest.objective.type === 'collect') {
     return quest.objective.target === 'any' || quest.objective.target === target;
   }
   // 'floor' and 'gold' events carry the absolute value (floor/gold amount);

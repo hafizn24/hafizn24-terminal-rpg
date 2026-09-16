@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useGameStore } from '../../game/store/gameStore';
 import { useUIStore } from '../../game/store/uiStore';
 import { Button } from '../ui/Button';
@@ -31,10 +31,10 @@ export function QuestBoardScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const playerFloor = player?.floor ?? 1;
-  // Stable side-quest offers: memoize once per mount so the list doesn't
+  // Stable side-quest offers: snapshot the floor on mount so the list doesn't
   // regenerate on every floor change and invalidate Accept buttons.
-  const availableQuests = useMemo(() => generateSideQuests(playerFloor), []);
+  const mountFloor = useRef(player?.floor ?? 1);
+  const availableQuests = useMemo(() => generateSideQuests(mountFloor.current), []);
 
   if (!player) return null;
 

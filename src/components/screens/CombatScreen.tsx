@@ -5,28 +5,44 @@ import { Button } from '../ui/Button';
 import { Panel } from '../ui/Panel';
 import { ProgressBar } from '../ui/ProgressBar';
 import { calcDamage, calcCritChance, calcDodgeChance, chance, pickRandom } from '../../utils/rng';
+import { playSfx } from '../../utils/audio';
+import { recordTelemetryEvent } from '../../utils/telemetry';
+import {
+  getPlayerDefTotal,
+  getPrimaryAttack,
+  getSkillAttack,
+  intentPreviewRange,
+} from '../../engine/rules/damage';
+import { effectiveSkillCost, getRelicMods } from '../../engine/rules/relics';
 import { CLASSES } from '../../game/data/classes';
 import { isBossEnemy } from '../../game/data/ascii';
-import type { Enemy, EnemySkill } from '../../types/game';
+import { isFinalFloor } from '../../game/systems/dungeonGenerator';
+import type { ClassSkill, Enemy, EnemySkill } from '../../types/game';
 import { useKeyboard } from '../../hooks/useKeyboard';
+import { useMetaStore } from '../../game/store/metaStore';
 
-/**
- * Per-class skill scaling so each class feels different:
- * warrior = STR-heavy, mage = INT-heavy, rogue = DEX-flavoured, cleric = INT w/ heal.
- */
-function getSkillAttack(p: { class: string; stats: { str: number; dex: number; int: number } }, weaponStr = 0, accessoryInt = 0): number {
-  switch (p.class) {
-    case 'warrior':
-      return p.stats.str * 2 + p.stats.int * 0.3 + weaponStr;
-    case 'mage':
-      return p.stats.str * 0.4 + p.stats.int * 2.2 + accessoryInt;
-    case 'rogue':
-      return p.stats.str + p.stats.dex * 1.2 + p.stats.int * 0.3 + weaponStr;
-    case 'cleric':
-      return p.stats.str * 0.7 + p.stats.int * 1.6 + accessoryInt;
-    default:
-      return p.stats.str + p.stats.int;
-  }
+/** Short-lived combat buffs: setup now, payoff later (the rotation). */
+interface PlayerBuffs {
+  atkMult: number;
+  atkTurns: number;
+  critNext: boolean;
+  critTurns: number;
+  evadeCharges: number;
+  shield: number;
+}
+
+const EMPTY_BUFFS: PlayerBuffs = {
+  atkMult: 1,
+  atkTurns: 0,
+  critNext: false,
+  critTurns: 0,
+  evadeCharges: 0,
+  shield: 0,
+};
+
+interface EnemyWeaken {
+  mult: number;
+  turns: number;
 }
 
 interface CombatState {
@@ -43,6 +59,8 @@ interface CombatState {
   playerStatus: StatusEffect | null;
   enemyStatus: StatusEffect | null;
   round: number;
+  playerBuffs: PlayerBuffs;
+  enemyWeaken: EnemyWeaken | null;
 }
 
 interface StatusEffect {
@@ -67,6 +85,25 @@ function rollIntent(enemy: Enemy): EnemySkill | null {
   return chance(rolled.chance) ? rolled : null;
 }
 
+/** Tick setup buffs down at the end of each enemy turn. Pure. */
+function tickBuffs(prev: CombatState): Partial<CombatState> {
+  const b = prev.playerBuffs;
+  const atkTurns = Math.max(0, b.atkTurns - 1);
+  const critTurns = Math.max(0, b.critTurns - 1);
+  const w = prev.enemyWeaken;
+  const wTurns = w ? w.turns - 1 : 0;
+  return {
+    playerBuffs: {
+      ...b,
+      atkTurns,
+      atkMult: atkTurns > 0 ? b.atkMult : 1,
+      critTurns,
+      critNext: critTurns > 0 ? b.critNext : false,
+    },
+    enemyWeaken: w && wTurns > 0 ? { mult: w.mult, turns: wTurns } : null,
+  };
+}
+
 export function CombatScreen() {
   const { player, updatePlayer, setScreen, setGameOver, dungeon, setDungeon } = useGameStore();
   const addLog = useUIStore((s) => s.addLog);
@@ -85,6 +122,8 @@ export function CombatScreen() {
     playerStatus: null,
     enemyStatus: null,
     round: 1,
+    playerBuffs: { ...EMPTY_BUFFS },
+    enemyWeaken: null,
   });
   // Single-line combat log: only the latest entry is shown, fixed height,
   // never expands. Full history stays in the global log (dungeon LogPanel).
@@ -137,15 +176,15 @@ export function CombatScreen() {
 
   const getPlayerAttack = useCallback(() => {
     const p = playerRef.current!;
-    return p.stats.str + (p.equipment.weapon?.statBonus?.str || 0) + (p.equipment.accessory?.statBonus?.str || 0);
+    const mods = getRelicMods(p.relics ?? []);
+    const buffs = stateRef.current.playerBuffs;
+    const rage = buffs.atkTurns > 0 ? buffs.atkMult : 1;
+    return Math.floor(getPrimaryAttack(p) * mods.basicMult * rage);
   }, []);
 
   const getPlayerDef = useCallback(() => {
     const p = playerRef.current!;
-    return (
-      Math.floor((p.equipment.armor?.statBonus?.hp || 0) / 5) +
-      Math.floor((p.equipment.accessory?.statBonus?.hp || 0) / 5)
-    );
+    return getPlayerDefTotal(p) + getRelicMods(p.relics ?? []).defBonus;
   }, []);
 
   const getCritChance = useCallback(() => {
@@ -173,6 +212,7 @@ export function CombatScreen() {
           combatLog: [...s.combatLog, `${st.id === 'burn' ? 'Burn' : 'Poison'}: -${st.dmg} HP`],
         }));
         if (newHp <= 0) {
+          playSfx('defeat');
           setGameOver(`Succumbed to ${st.id} against ${enemyRef.current?.name ?? 'the enemy'}.`);
           setState((s) => ({ ...s, isOver: true, won: false }));
           return true;
@@ -196,8 +236,11 @@ export function CombatScreen() {
         return true;
       }
       return false;
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     },
+    // handleVictory intentionally omitted: it is only invoked deferred inside
+    // setTimeout and reads live state through refs/the store, so memoizing on
+    // its identity would re-create this callback every render for no benefit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [addDamageNumber, addLog, updatePlayer, setGameOver]
   );
 
@@ -217,12 +260,27 @@ export function CombatScreen() {
 
     const intent = stateRef.current.intent;
     const guarding = stateRef.current.guarding;
+    const mods = getRelicMods(p.relics ?? []);
     const pDex = p.stats.dex + (p.equipment.accessory?.statBonus?.dex || 0);
-    const dodgeChance = calcDodgeChance(pDex, e.stats.dex, guarding);
+    const dodgeChance = Math.min(0.38, calcDodgeChance(pDex, e.stats.dex, guarding) + mods.dodgeBonus);
+
+    // Smoke Veil charges dodge guaranteed, then fall through to the DEX roll.
+    const buffs = stateRef.current.playerBuffs;
+    const veiled = buffs.evadeCharges > 0;
+    if (veiled) {
+      setState((prev) => ({
+        ...prev,
+        playerBuffs: { ...prev.playerBuffs, evadeCharges: prev.playerBuffs.evadeCharges - 1 },
+      }));
+    }
 
     // DEX dodge — avoids the hit entirely (guard boosts it).
-    if (chance(dodgeChance)) {
-      const msg = guarding ? 'Dodged behind your guard! No damage!' : 'Dodged! No damage!';
+    if (veiled || chance(dodgeChance)) {
+      const msg = veiled
+        ? 'Vanished in smoke! No damage!'
+        : guarding
+          ? 'Dodged behind your guard! No damage!'
+          : 'Dodged! No damage!';
       addLog(msg, 'combat');
       addDamageNumber('MISS', '#00ffff', 50, 65);
       setState((prev) => ({
@@ -232,6 +290,7 @@ export function CombatScreen() {
         guarding: false,
         intent: rollIntent(e),
         round: prev.round + 1,
+        ...tickBuffs(prev),
       }));
       return;
     }
@@ -240,12 +299,15 @@ export function CombatScreen() {
     let logMsg: string;
     let statusToApply: StatusEffect | null = null;
 
+    // Weaken curses the attacker's output, not your armor — a different answer
+    // than Guard for telegraphed heavy intents.
+    const weakenMult = stateRef.current.enemyWeaken?.mult ?? 1;
     if (intent) {
-      dmg = calcDamage(Math.floor(e.attack * intent.power), getPlayerDef());
+      dmg = calcDamage(Math.floor(e.attack * intent.power * weakenMult), getPlayerDef());
       logMsg = `${e.name} uses ${intent.name}! ${dmg} damage!`;
       if (intent.status) statusToApply = { ...intent.status };
     } else {
-      dmg = calcDamage(e.attack, getPlayerDef());
+      dmg = calcDamage(Math.floor(e.attack * weakenMult), getPlayerDef());
       logMsg = `${e.name} attacks for ${dmg} damage.`;
     }
 
@@ -254,18 +316,30 @@ export function CombatScreen() {
       logMsg += ' (Guarded!)';
     }
 
+    // Shields absorb after Guard so setup (Stone Skin) and reaction (Guard)
+    // stack instead of competing.
+    const shield = stateRef.current.playerBuffs.shield;
+    if (shield > 0 && dmg > 0) {
+      const absorbed = Math.min(shield, dmg);
+      dmg -= absorbed;
+      logMsg += ` (${absorbed} warded!)`;
+      setState((prev) => ({
+        ...prev,
+        playerBuffs: { ...prev.playerBuffs, shield: prev.playerBuffs.shield - absorbed },
+      }));
+    }
+
     const newHp = Math.max(0, p.stats.hp - dmg);
-    // Guard restores a little MP.
-    const newMp = guarding
-      ? Math.min(p.stats.maxMp, p.stats.mp + 5)
-      : p.stats.mp;
-    updatePlayer({ stats: { ...p.stats, hp: newHp, mp: newMp } });
+    // Guard mitigates damage only — no MP regen, so Guard->Skill is a
+    // tempo trade (survive now, attack later) instead of a free engine.
+    updatePlayer({ stats: { ...p.stats, hp: newHp } });
 
     addLog(logMsg, 'danger');
     triggerShake();
     addDamageNumber(`-${dmg}`, '#ff0040', 50 + Math.random() * 30, 60 + Math.random() * 20);
 
     if (newHp <= 0) {
+      playSfx('defeat');
       setGameOver(`Defeated by ${e.name} on floor ${dungeonRef.current?.floor || 1}.`);
       setState((prev) => ({
         ...prev,
@@ -285,6 +359,7 @@ export function CombatScreen() {
       intent: rollIntent(e),
       round: prev.round + 1,
       playerStatus: statusToApply ?? prev.playerStatus,
+      ...tickBuffs(prev),
     }));
     if (statusToApply) {
       addLog(`You are afflicted with ${statusToApply.id}!`, 'danger');
@@ -299,8 +374,9 @@ export function CombatScreen() {
       }
       setTimeout(enemyTurn, 800);
       return false;
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     },
+    // handleVictory intentionally omitted: deferred-only call (see above).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [enemyTurn]
   );
 
@@ -312,7 +388,10 @@ export function CombatScreen() {
     const e = enemyRef.current!;
     if (!p || !e) return;
 
-    const crit = chance(getCritChance());
+    // Cheap Shot guarantees the crit; otherwise roll it.
+    const buffs = stateRef.current.playerBuffs;
+    const forcedCrit = buffs.critNext && buffs.critTurns > 0;
+    const crit = forcedCrit || chance(getCritChance());
     const dmg = calcDamage(getPlayerAttack(), e.defense);
     const finalDmg = crit ? Math.floor(dmg * 2) : dmg;
     const newEnemyHp = Math.max(0, s.enemyHp - finalDmg);
@@ -323,63 +402,155 @@ export function CombatScreen() {
 
     addDamageNumber(crit ? `CRIT -${finalDmg}` : `-${finalDmg}`, crit ? '#ffd700' : '#00ff41', 50 + Math.random() * 30, 20 + Math.random() * 20);
     if (crit) triggerShake();
+    playSfx(crit ? 'crit' : 'hit');
+    useGameStore.getState().recordRunDamage(finalDmg);
 
     setState((prev) => ({
       ...prev,
       enemyHp: newEnemyHp,
       isPlayerTurn: false,
       combatLog: [...prev.combatLog, logMsg],
+      // The opener is spent whether or not it crit — timing matters.
+      playerBuffs: forcedCrit
+        ? { ...prev.playerBuffs, critNext: false, critTurns: 0 }
+        : prev.playerBuffs,
     }));
     addLog(logMsg, crit ? 'loot' : 'combat');
     checkVictory(newEnemyHp);
   }, [addDamageNumber, addLog, applyStatusTick, checkVictory, getCritChance, getPlayerAttack, triggerShake]);
 
-  const handleSkill = useCallback(() => {
+  const handleSkillId = useCallback((skillId: string) => {
     const s = stateRef.current;
     if (!s.isPlayerTurn || s.isOver) return;
     if (applyStatusTick('player')) return;
     const p = playerRef.current!;
     const e = enemyRef.current!;
     const classDef = CLASSES.find((c) => c.id === p.class);
-    if (!classDef || !p || !e) return;
+    const skill: ClassSkill | undefined = classDef?.skills.find((sk) => sk.id === skillId);
+    if (!classDef || !p || !e || !skill) return;
+    if (p.level < skill.unlockLevel) return;
 
-    if (p.stats.mp < classDef.skill.mpCost) {
-      setState((prev) => ({ ...prev, combatLog: [...prev.combatLog, 'Not enough MP! Guard to recover 5 MP.'] }));
+    const mods = getRelicMods(p.relics ?? []);
+    const cost = effectiveSkillCost(skill.mpCost, mods);
+    if (p.stats.mp < cost) {
+      setState((prev) => ({ ...prev, combatLog: [...prev.combatLog, 'Not enough MP! Use an MP potion or basic attack.'] }));
       return;
     }
 
-    const atk = getSkillAttack(
-      p,
-      p.equipment.weapon?.statBonus?.str || 0,
-      p.equipment.accessory?.statBonus?.int || 0
-    );
-    const isRogueBonus = p.class === 'rogue' && chance(0.25);
-    const base = calcDamage(Math.floor((atk * classDef.skill.power) / 2), e.defense);
-    const dmg = isRogueBonus ? base * 2 : base;
-    const newEnemyHp = Math.max(0, s.enemyHp - dmg);
+    let atk = getSkillAttack(p, {
+      str: (p.equipment.weapon?.statBonus?.str || 0) + (p.equipment.accessory?.statBonus?.str || 0),
+      dex: (p.equipment.weapon?.statBonus?.dex || 0) + (p.equipment.accessory?.statBonus?.dex || 0),
+      int: (p.equipment.weapon?.statBonus?.int || 0) + (p.equipment.accessory?.statBonus?.int || 0),
+    });
+    // Adrenaline: desperate skills hit harder.
+    if (p.stats.hp < p.stats.maxHp * 0.3) atk = Math.floor(atk * mods.lowHpSkillMult);
+    // Rage fuels skills too — setup into payoff.
+    const buffs = stateRef.current.playerBuffs;
+    if (buffs.atkTurns > 0) atk = Math.floor(atk * buffs.atkMult);
 
-    let newStats = { ...p.stats, mp: p.stats.mp - classDef.skill.mpCost };
-    let logMsg = `${classDef.skill.name}! Deals ${dmg} damage!${isRogueBonus ? ' SNEAK BONUS x2!' : ''}`;
-    if (p.class === 'cleric') {
-      const heal = 2 * p.stats.int;
-      newStats = { ...newStats, hp: Math.min(newStats.maxHp, newStats.hp + heal) };
-      logMsg += ` Healed ${heal} HP.`;
-      addDamageNumber(`+${heal}`, '#00ff41', 40, 75);
+    const spendMp = { ...p.stats, mp: p.stats.mp - cost };
+    const endTurnWithUtility = (logMsg: string, stats = spendMp, extra: Partial<CombatState> = {}) => {
+      updatePlayer({ stats });
+      addLog(logMsg, 'combat');
+      playSfx('click');
+      setState((prev) => ({ ...prev, isPlayerTurn: false, combatLog: [...prev.combatLog, logMsg], ...extra }));
+      setTimeout(enemyTurn, 800);
+    };
+
+    if (skill.kind === 'strike' || skill.kind === 'nuke' || skill.kind === 'healStrike') {
+      const isSneak = skill.id === 'backstab' && chance(0.25);
+      const base = calcDamage(Math.floor((atk * skill.power) / 2), e.defense);
+      const dmg = isSneak ? base * 2 : base;
+      const newEnemyHp = Math.max(0, s.enemyHp - dmg);
+
+      let newStats = { ...spendMp };
+      let logMsg = `${skill.name}! Deals ${dmg} damage!${isSneak ? ' SNEAK BONUS x2!' : ''}`;
+      if (skill.kind === 'healStrike') {
+        const heal = 2 * p.stats.int;
+        newStats = { ...newStats, hp: Math.min(newStats.maxHp, newStats.hp + heal) };
+        logMsg += ` Healed ${heal} HP.`;
+        addDamageNumber(`+${heal}`, '#00ff41', 40, 75);
+      }
+      updatePlayer({ stats: newStats });
+
+      addDamageNumber(`-${dmg}`, '#00ffff', 50 + Math.random() * 30, 20 + Math.random() * 20);
+      triggerShake();
+      playSfx('skill');
+      useGameStore.getState().recordRunDamage(dmg);
+
+      setState((prev) => ({
+        ...prev,
+        enemyHp: newEnemyHp,
+        isPlayerTurn: false,
+        combatLog: [...prev.combatLog, logMsg],
+      }));
+      addLog(logMsg, 'combat');
+      checkVictory(newEnemyHp);
+      return;
     }
-    updatePlayer({ stats: newStats });
 
-    addDamageNumber(`-${dmg}`, '#00ffff', 50 + Math.random() * 30, 20 + Math.random() * 20);
-    triggerShake();
-
-    setState((prev) => ({
-      ...prev,
-      enemyHp: newEnemyHp,
-      isPlayerTurn: false,
-      combatLog: [...prev.combatLog, logMsg],
-    }));
-    addLog(logMsg, 'combat');
-    checkVictory(newEnemyHp);
-  }, [addDamageNumber, addLog, applyStatusTick, checkVictory, triggerShake, updatePlayer]);
+    switch (skill.kind) {
+      case 'rage':
+        endTurnWithUtility(
+          `${skill.name}! +${Math.round((skill.power - 1) * 100)}% attack for 3 turns.`,
+          spendMp,
+          { playerBuffs: { ...buffs, atkMult: skill.power, atkTurns: 3 } },
+        );
+        break;
+      case 'shield': {
+        const amount = skill.id === 'divine_shield'
+          ? Math.floor(skill.power + 2 * p.stats.int)
+          : Math.floor(skill.power + 5 * p.level);
+        addDamageNumber(`+${amount} ward`, '#00ffff', 40, 75);
+        endTurnWithUtility(
+          `${skill.name}! Warded ${amount} damage.`,
+          spendMp,
+          { playerBuffs: { ...buffs, shield: buffs.shield + amount } },
+        );
+        break;
+      }
+      case 'weaken':
+        endTurnWithUtility(
+          `${skill.name}! The foe is cursed (-${Math.round((1 - skill.power) * 100)}% attack, 3 turns).`,
+          spendMp,
+          { enemyWeaken: { mult: skill.power, turns: 3 } },
+        );
+        break;
+      case 'critNext':
+        endTurnWithUtility(
+          `${skill.name}! Your next attack within 3 turns always crits.`,
+          spendMp,
+          { playerBuffs: { ...buffs, critNext: true, critTurns: 3 } },
+        );
+        break;
+      case 'evade':
+        endTurnWithUtility(
+          `${skill.name}! You will dodge the next ${skill.power} hits.`,
+          spendMp,
+          { playerBuffs: { ...buffs, evadeCharges: buffs.evadeCharges + skill.power } },
+        );
+        break;
+      case 'cleanse': {
+        const heal = Math.floor(skill.power * p.stats.int);
+        const had = stateRef.current.playerStatus;
+        const newStats = { ...spendMp, hp: Math.min(spendMp.maxHp, spendMp.hp + heal) };
+        addDamageNumber(`+${heal}`, '#00ff41', 40, 75);
+        updatePlayer({ stats: newStats });
+        const logMsg = `${skill.name}! ${had ? 'Affliction purged. ' : ''}Restored ${heal} HP.`;
+        addLog(logMsg, 'combat');
+        setState((prev) => ({
+          ...prev,
+          playerStatus: null,
+          isPlayerTurn: false,
+          combatLog: [...prev.combatLog, logMsg],
+        }));
+        setTimeout(enemyTurn, 800);
+        break;
+      }
+      default:
+        break;
+    }
+  }, [addDamageNumber, addLog, applyStatusTick, checkVictory, enemyTurn, triggerShake, updatePlayer]);
 
   const consumeOne = useCallback(
     (itemId: string): boolean => {
@@ -425,6 +596,7 @@ export function CombatScreen() {
         const msg = `Threw ${item.name}! ${total} damage!`;
         addDamageNumber(`-${total}`, '#ff8800', 55, 25);
         triggerShake();
+        useGameStore.getState().recordRunDamage(total);
         setState((prev) => ({
           ...prev,
           enemyHp: newEnemyHp,
@@ -433,6 +605,20 @@ export function CombatScreen() {
         }));
         addLog(msg, 'combat');
         checkVictory(newEnemyHp);
+        return;
+      }
+
+      // Purifying Herb: the only cleanse outside the Cleric. Never wasted —
+      // usable at full HP, and it still costs the turn.
+      if (item.cleanse) {
+        consumeOne(itemId);
+        const had = stateRef.current.playerStatus;
+        const msg = had
+          ? `Used ${item.name}. ${had.id === 'burn' ? 'Burn' : 'Poison'} purged!`
+          : `Used ${item.name}. (No affliction.)`;
+        setState((prev) => ({ ...prev, playerStatus: null, isPlayerTurn: false, combatLog: [...prev.combatLog, msg] }));
+        addLog(msg, 'loot');
+        setTimeout(enemyTurn, 800);
         return;
       }
 
@@ -488,6 +674,14 @@ export function CombatScreen() {
       handleUseItemId(mpPotion.item.id);
       return;
     }
+    // Afflicted? Reach for the herb before anything else.
+    const herb = p.inventory.find(
+      (sl) => sl.item.cleanse && sl.quantity > 0 && stateRef.current.playerStatus
+    );
+    if (herb) {
+      handleUseItemId(herb.item.id);
+      return;
+    }
     const anyPotion = p.inventory.find(
       (sl) => sl.item.type === 'potion' && sl.quantity > 0
     );
@@ -500,7 +694,7 @@ export function CombatScreen() {
     const s = stateRef.current;
     if (!s.isPlayerTurn || s.isOver) return;
     if (applyStatusTick('player')) return;
-    const msg = 'You brace! Next hit halved, +15% dodge, +5 MP.';
+    const msg = 'You brace! Next hit halved, +15% dodge.';
     setState((prev) => ({ ...prev, guarding: true, isPlayerTurn: false, combatLog: [...prev.combatLog, msg] }));
     addLog(msg, 'combat');
     setTimeout(enemyTurn, 800);
@@ -537,20 +731,37 @@ export function CombatScreen() {
         addLog(`Loot: ${itemName} x${loot.quantity}`, 'loot');
       }
     });
-    // Elites drop extra consumables/accessories.
+    // Elites drop extra consumables/accessories — and sometimes a vault key.
     if (e.isElite) {
       if (chance(0.35)) {
         const bonus = pickRandom(['fire_bomb', 'smoke_bomb', 'hp_potion_m', 'lucky_charm', 'iron_ring']);
         store.addItem(bonus, 1);
         addLog(`Elite loot: ${bonus.replace(/_/g, ' ')}!`, 'loot');
       }
+      if (chance(0.15)) {
+        store.addItem('dungeon_key', 1);
+        addLog('Elite loot: dungeon key!', 'loot');
+      }
     }
 
+    const mods = getRelicMods(p.relics ?? []);
+    const modifier = dungeonRef.current?.modifier ?? 'none';
+    const goldGain = Math.floor(e.goldReward * mods.goldMult * (modifier === 'golden' ? 2 : 1));
+    const expGain = Math.floor(e.expReward * (modifier === 'swarm' ? 1.25 : 1));
+
     const fresh = useGameStore.getState().player!;
-    const goldGain = e.goldReward;
     useGameStore.getState().updatePlayer({ gold: fresh.gold + goldGain });
-    const levelMsgs = useGameStore.getState().gainExp(e.expReward);
+    const levelMsgs = useGameStore.getState().gainExp(expGain);
     levelMsgs.forEach((m) => addLog(m, 'loot'));
+    // Blood Vial: victory mends wounds.
+    if (mods.healOnKill > 0) {
+      const after = useGameStore.getState().player!;
+      if (after.stats.hp < after.stats.maxHp && after.stats.hp > 0) {
+        useGameStore.getState().updatePlayer({
+          stats: { ...after.stats, hp: Math.min(after.stats.maxHp, after.stats.hp + mods.healOnKill) },
+        });
+      }
+    }
 
     store.updateQuestProgress('kill', e.id);
     store.updateQuestProgress('kill', 'any');
@@ -563,6 +774,12 @@ export function CombatScreen() {
     if (isBoss) {
       const st = useGameStore.getState().stats;
       useGameStore.setState({ stats: { ...st, bossesKilled: st.bossesKilled + 1 } });
+    }
+    // Run telemetry + Bestiary unlock (Elite shares the base enemy id).
+    store.recordRunKill(goldGain, isBoss);
+    useMetaStore.getState().recordKill(e.id);
+    if (isBoss) {
+      recordTelemetryEvent({ t: 'bossKilled', classId: p.class, floor: dungeonRef.current?.floor ?? 1, boss: e.id });
     }
 
     const d = dungeonRef.current;
@@ -578,34 +795,96 @@ export function CombatScreen() {
       setDungeon({ ...d, rooms: newRooms });
     }
 
-    const logMsg = `Victory! +${e.expReward} EXP, +${goldGain} Gold`;
+    const logMsg = `Victory! +${expGain} EXP, +${goldGain} Gold`;
+    addLog(logMsg, 'loot');
+    playSfx('victory');
+    if (levelMsgs.length > 0) playSfx('levelup');
+
+    // Volatile burst: killing it is only half the fight — kill it last, kill
+    // it from full HP, or kill it and die. It CAN kill you back.
+    if (e.onDeath?.kind === 'burst') {
+      const floor = dungeonRef.current?.floor ?? 1;
+      const burst = e.onDeath.flat + e.onDeath.perFloor * floor;
+      const cur = useGameStore.getState().player!;
+      const left = Math.max(0, cur.stats.hp - burst);
+      useGameStore.getState().updatePlayer({ stats: { ...cur.stats, hp: left } });
+      const burstMsg = `${e.name} explodes! ${burst} damage!`;
+      addLog(burstMsg, 'danger');
+      triggerShake();
+      playSfx('trap');
+      addDamageNumber(`-${burst}`, '#ff8800', 50, 65);
+      if (left <= 0) {
+        playSfx('defeat');
+        setGameOver(`Slain by a ${e.name} burst on floor ${floor}.`);
+        setState((prev) => ({
+          ...prev,
+          combatLog: [...prev.combatLog, logMsg, ...levelMsgs, burstMsg, 'You have been slain!'],
+          isOver: true,
+          won: false,
+        }));
+        return;
+      }
+      setState((prev) => ({
+        ...prev,
+        combatLog: [...prev.combatLog, logMsg, ...levelMsgs, burstMsg],
+        isOver: true,
+        won: true,
+      }));
+      setTimeout(() => {
+        useGameStore.getState().save();
+        setScreen('dungeon');
+      }, 1500);
+      return;
+    }
+
     setState((prev) => ({
       ...prev,
       combatLog: [...prev.combatLog, logMsg, ...levelMsgs],
       isOver: true,
       won: true,
     }));
-    addLog(logMsg, 'loot');
 
+    // Routing: summit the spine, draft a relic per boss, else press on.
+    const isFinal =
+      isBoss &&
+      dungeonRef.current !== null &&
+      isFinalFloor(dungeonRef.current.floor) &&
+      !useMetaStore.getState().endlessUnlocked;
     // Autosave progress so a refresh doesn't wipe the run.
     setTimeout(() => {
       useGameStore.getState().save();
-      setScreen('dungeon');
+      if (isFinal) {
+        useGameStore.getState().completeEnding();
+      } else if (isBoss) {
+        setScreen('relicDraft');
+      } else {
+        setScreen('dungeon');
+      }
     }, 1500);
-  }, [addLog, setDungeon, setScreen]);
+  }, [addDamageNumber, addLog, setDungeon, setGameOver, setScreen, triggerShake]);
+
+  const skillKeys = useMemo(() => {
+    const classDef = CLASSES.find((c) => c.id === playerRef.current?.class);
+    const ids = (classDef?.skills ?? []).map((sk) => sk.id);
+    return {
+      '2': () => ids[0] && handleSkillId(ids[0]),
+      q: () => ids[1] && handleSkillId(ids[1]),
+      e: () => ids[2] && handleSkillId(ids[2]),
+    };
+  }, [handleSkillId]);
 
   const keyMap = useMemo(
     () => ({
       '1': handleAttack,
       Enter: handleAttack,
-      '2': handleSkill,
+      ...skillKeys,
       '3': handleQuickPotion,
       '4': handleRun,
       '5': handleGuard,
       g: handleGuard,
       Escape: handleRun,
     }),
-    [handleAttack, handleSkill, handleQuickPotion, handleRun, handleGuard]
+    [handleAttack, skillKeys, handleQuickPotion, handleRun, handleGuard]
   );
 
   useKeyboard(keyMap);
@@ -613,23 +892,25 @@ export function CombatScreen() {
   if (!player || !enemyRef.current) return <div className="text-terminal-dim">No enemy...</div>;
   const enemy = enemyRef.current;
   const classDef = CLASSES.find((c) => c.id === player.class);
-  const canAffordSkill = classDef ? player.stats.mp >= classDef.skill.mpCost : false;
+  const mods = getRelicMods(player.relics ?? []);
+  const skillCost = (sk: ClassSkill) => effectiveSkillCost(sk.mpCost, mods);
 
   const hpPotions = player.inventory.filter((s) => s.item.healAmount && s.quantity > 0);
   const mpPotions = player.inventory.filter((s) => s.item.mpRestoreAmount && !s.item.healAmount && s.quantity > 0);
   const bombs = player.inventory.filter((s) => s.item.effect === 'bomb' && s.quantity > 0);
   const smokes = player.inventory.filter((s) => s.item.effect === 'smoke' && s.quantity > 0);
+  const herbs = player.inventory.filter((s) => s.item.cleanse && s.quantity > 0);
   const hpCount = hpPotions.reduce((a, s) => a + s.quantity, 0);
   const mpCount = mpPotions.reduce((a, s) => a + s.quantity, 0);
   const bombCount = bombs.reduce((a, s) => a + s.quantity, 0);
   const smokeCount = smokes.reduce((a, s) => a + s.quantity, 0);
 
-  const playerDef =
-    Math.floor((player.equipment.armor?.statBonus?.hp || 0) / 5) +
-    Math.floor((player.equipment.accessory?.statBonus?.hp || 0) / 5);
-  const intentBase = state.intent ? Math.floor(enemy.attack * state.intent.power) : enemy.attack;
-  const intentMin = Math.max(1, Math.floor((intentBase - playerDef * 0.5) * 0.85));
-  const intentMax = Math.max(1, Math.floor((intentBase - playerDef * 0.5) * 1.15));
+  const playerDef = getPlayerDefTotal(player) + mods.defBonus;
+  const weakenMult = state.enemyWeaken?.mult ?? 1;
+  const intentBase = state.intent
+    ? Math.floor(enemy.attack * state.intent.power * weakenMult)
+    : Math.floor(enemy.attack * weakenMult);
+  const { min: intentMin, max: intentMax } = intentPreviewRange(intentBase, playerDef);
   const boss = isBossEnemy(enemy);
   const enemyFrame = enemy.isElite
     ? 'border-terminal-yellow'
@@ -665,7 +946,21 @@ export function CombatScreen() {
           <ProgressBar current={player.stats.mp} max={player.stats.maxMp} label="MP" color="cyan" />
         </div>
         <div className="mt-1 text-[11px] text-terminal-dim text-center truncate">
-          {classDef ? `${classDef.skill.name} (${classDef.skill.mpCost})` : '—'}
+          {state.playerBuffs.atkTurns > 0 && (
+            <span className="text-terminal-yellow"> · RAGE {state.playerBuffs.atkTurns}t</span>
+          )}
+          {state.playerBuffs.shield > 0 && (
+            <span className="text-terminal-cyan"> · WARD {state.playerBuffs.shield}</span>
+          )}
+          {state.playerBuffs.critNext && state.playerBuffs.critTurns > 0 && (
+            <span className="text-terminal-yellow"> · CRIT!</span>
+          )}
+          {state.playerBuffs.evadeCharges > 0 && (
+            <span className="text-terminal-cyan"> · VEIL x{state.playerBuffs.evadeCharges}</span>
+          )}
+          {state.enemyWeaken && (
+            <span className="text-terminal-yellow"> · WEAK {state.enemyWeaken.turns}t</span>
+          )}
           {state.guarding && <span className="text-terminal-cyan"> · GUARD</span>}
           {state.playerStatus && (
             <span className="text-terminal-red"> · [{state.playerStatus.id}]</span>
@@ -691,21 +986,35 @@ export function CombatScreen() {
             <Button onClick={handleAttack} disabled={!state.isPlayerTurn}>
               {'[1] Attack'}
             </Button>
-            <Button onClick={handleSkill} disabled={!state.isPlayerTurn || !canAffordSkill}>
-              {`[2] Skill${classDef ? ` (${classDef.skill.mpCost})` : ''}`}
-            </Button>
             <Button onClick={handleQuickPotion} disabled={!state.isPlayerTurn}>
               {`[3] Potion (${hpCount}H/${mpCount}M)`}
             </Button>
             <Button variant="danger" onClick={handleRun} disabled={!state.isPlayerTurn}>
               {'[4] Run'}
             </Button>
+            <Button onClick={handleGuard} disabled={!state.isPlayerTurn}>
+              {'[5] Guard'}
+            </Button>
           </div>
-          <Button onClick={handleGuard} disabled={!state.isPlayerTurn}>
-            {'[5] Guard'}
-          </Button>
-          {(bombCount > 0 || smokeCount > 0) && (
-            <div className="flex gap-2">
+          {(classDef?.skills ?? []).map((sk, i) => {
+            const locked = player.level < sk.unlockLevel;
+            const cost = skillCost(sk);
+            const afford = player.stats.mp >= cost;
+            const key = i === 0 ? '2' : i === 1 ? 'Q' : 'E';
+            return (
+              <Button
+                key={sk.id}
+                onClick={() => handleSkillId(sk.id)}
+                disabled={!state.isPlayerTurn || locked || !afford}
+                variant={locked ? 'ghost' : 'primary'}
+                title={sk.description}
+              >
+                {locked ? `[Lv${sk.unlockLevel}] ${sk.name}` : `[${key}] ${sk.name} (${cost})`}
+              </Button>
+            );
+          })}
+          {(bombCount > 0 || smokeCount > 0 || herbs.length > 0) && (
+            <div className="flex gap-2 flex-wrap">
               {bombs.map((s) => (
                 <Button key={s.item.id} size="sm" onClick={() => handleUseItemId(s.item.id)} disabled={!state.isPlayerTurn}>
                   {`Bomb x${s.quantity}`}
@@ -714,6 +1023,11 @@ export function CombatScreen() {
               {smokes.map((s) => (
                 <Button key={s.item.id} size="sm" variant="ghost" onClick={() => handleUseItemId(s.item.id)} disabled={!state.isPlayerTurn}>
                   {`Smoke x${s.quantity}`}
+                </Button>
+              ))}
+              {herbs.map((s) => (
+                <Button key={s.item.id} size="sm" variant="ghost" onClick={() => handleUseItemId(s.item.id)} disabled={!state.isPlayerTurn}>
+                  {`Herb x${s.quantity}`}
                 </Button>
               ))}
             </div>

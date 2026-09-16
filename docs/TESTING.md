@@ -16,10 +16,17 @@ npm run dev
 ## Automated Tests
 
 ```bash
-# Type checking (no runtime tests, just compile check)
+# Type checking
 npm run typecheck
 
-# Full build check
+# Lint (base JS + TS + react-hooks)
+npm run lint
+
+# Unit + balance suite (Vitest: engine rules, seeded gen, 1,000-run medians,
+# save round-trips/migrations, telemetry opt-in)
+npm test
+
+# Full build check (also emits the PWA service worker)
 npm run build
 ```
 
