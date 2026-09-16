@@ -71,6 +71,10 @@ export function InventoryScreen() {
       return;
     }
 
+    if (slot.item.cleanse) {
+      addLog('No affliction outside combat — save the herb for burns and poison.', 'info');
+      return;
+    }
     if (slot.item.healAmount && player.stats.hp >= player.stats.maxHp) {
       addLog('HP already full! Potion not used.', 'info');
       return;

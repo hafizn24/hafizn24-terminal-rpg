@@ -90,9 +90,13 @@ export function ClassSelectScreen() {
               <ProgressBar current={cls.baseStats.mp} max={cls.baseStats.maxMp} label="MP" color="cyan" />
             </div>
 
-            <div className="mt-2 pt-2 border-t border-terminal-dim/30">
-              <span className="text-terminal-dim text-[10px]">SKILL: </span>
-              <span className="text-terminal-green text-[10px]">{cls.skill.name}</span>
+            <div className="mt-2 pt-2 border-t border-terminal-dim/30 space-y-0.5">
+              {cls.skills.map((sk) => (
+                <div key={sk.id} className="flex justify-between text-[10px]">
+                  <span className="text-terminal-green">{sk.name}</span>
+                  <span className="text-terminal-dim">Lv{sk.unlockLevel} · {sk.mpCost}MP</span>
+                </div>
+              ))}
             </div>
           </button>
         ))}

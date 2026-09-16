@@ -4,10 +4,29 @@ import { useUIStore } from '../../game/store/uiStore';
 import { Button } from '../ui/Button';
 import { Panel } from '../ui/Panel';
 import { LogPanel } from '../terminal/LogPanel';
-import { generateDungeon, getAdjacentRooms, isBossFloor } from '../../game/systems/dungeonGenerator';
+import { FINAL_FLOOR, generateDungeon, getAdjacentRooms, isBossFloor } from '../../game/systems/dungeonGenerator';
+import { calcDodgeChance } from '../../utils/rng';
+import { playSfx } from '../../utils/audio';
+import { trapDexForFloor } from '../../engine/rules/damage';
+import { getRelicMods } from '../../engine/rules/relics';
+import { rngForFloor } from '../../engine/rng';
 import { getFloorTheme } from '../../game/data/ascii';
+import { useMetaStore } from '../../game/store/metaStore';
 import { useKeyboard } from '../../hooks/useKeyboard';
-import type { Room } from '../../types/game';
+import type { FloorModifier, Room } from '../../types/game';
+
+const MODIFIER_LABEL: Record<FloorModifier, string> = {
+  none: '',
+  golden: ' · GOLDEN',
+  cursed: ' · CURSED',
+  swarm: ' · SWARM',
+};
+
+/** Seeded stream for a floor, or undefined for legacy unseeded generation. */
+function floorRng(floor: number) {
+  const seed = useGameStore.getState().runSeed;
+  return seed === null || seed === undefined ? undefined : rngForFloor(seed, floor);
+}
 
 export function DungeonScreen() {
   const player = useGameStore((s) => s.player);
@@ -25,7 +44,15 @@ export function DungeonScreen() {
 
   useEffect(() => {
     if (!dungeon && player) {
-      const newDungeon = generateDungeon(player.floor);
+      const newDungeon = generateDungeon(player.floor, floorRng(player.floor));
+      // Scout the rooms adjacent to the entrance so the map opens with
+      // actionable information instead of a wall of '?'.
+      for (const row of newDungeon.rooms) {
+        for (const r of row) {
+          const nearStart = Math.abs(r.x - 0) + Math.abs(r.y - 0) === 1;
+          if (nearStart) r.explored = true;
+        }
+      }
       setDungeon(newDungeon);
       addLog(`Entered dungeon floor ${player.floor}.`, 'system');
     }
@@ -71,12 +98,14 @@ export function DungeonScreen() {
             mp: Math.min(p.stats.maxMp, p.stats.mp + healMp),
           },
         });
+        playSfx('rest');
         addLog(`Rested at a shrine. +${healHp} HP, +${healMp} MP.`, 'loot');
         clearRoomAt(room.x, room.y, { item: undefined });
         break;
       }
       case 'treasure': {
         if (room.item) {
+          playSfx('treasure');
           addLog(`Found: ${room.item.name}!`, 'loot');
           useGameStore.getState().addItem(room.item.id, 1);
           // Loot the chest so re-entering doesn't farm infinite items.
@@ -86,13 +115,46 @@ export function DungeonScreen() {
         }
         break;
       }
+      case 'vault': {
+        // The key type finally has a job: one key, one vault, epic-tier loot.
+        const keySlot = p.inventory.find((sl) => sl.item.id === 'dungeon_key' && sl.quantity > 0);
+        if (!keySlot) {
+          addLog('A sealed vault. It needs a dungeon key (elites, chests, shops).', 'info');
+          break;
+        }
+        const newInv = p.inventory
+          .map((sl) => (sl.item.id === 'dungeon_key' ? { ...sl, quantity: sl.quantity - 1 } : sl))
+          .filter((sl) => sl.quantity > 0);
+        updatePlayer({ inventory: newInv });
+        if (room.item) {
+          playSfx('treasure');
+          addLog(`Vault opened: ${room.item.name}!`, 'loot');
+          useGameStore.getState().addItem(room.item.id, 1);
+        } else {
+          addLog('An empty vault. Already claimed.', 'info');
+        }
+        clearRoomAt(room.x, room.y, { item: undefined });
+        break;
+      }
       case 'trap': {
-        const dmg = room.trapDamage || 10;
+        // Traps are dodgeable: DEX vs. a depth-scaled trap rating, so rogues
+        // slip through and warriors tank — not a flat unavoidable tax.
+        const floor = useGameStore.getState().dungeon?.floor ?? p.floor ?? 1;
+        const pDex = p.stats.dex + (p.equipment.accessory?.statBonus?.dex || 0);
+        const trapDex = trapDexForFloor(floor);
+        const dodged = Math.random() < calcDodgeChance(pDex, trapDex, false);
+        // Disarm the trap so it only triggers once, dodged or not.
+        clearRoomAt(room.x, room.y, { trapDamage: undefined });
+        if (dodged) {
+          addLog('Trap dodged! You slip past the pressure plate. (Disarmed.)', 'combat');
+          break;
+        }
+        const wardMult = getRelicMods(p.relics ?? []).trapMult;
+        const dmg = Math.max(1, Math.floor((room.trapDamage || 10) * wardMult));
+        playSfx('trap');
         const newHp = Math.max(0, p.stats.hp - dmg);
         updatePlayer({ stats: { ...p.stats, hp: newHp } });
         addLog(`Trap! Took ${dmg} damage! (One-shot trap, now disarmed.)`, 'danger');
-        // Disarm the trap so it only triggers once.
-        clearRoomAt(room.x, room.y, { trapDamage: undefined });
         if (newHp <= 0) setGameOver('Killed by a dungeon trap.');
         break;
       }
@@ -124,12 +186,22 @@ export function DungeonScreen() {
     if (newX < 0 || newX >= d.gridSize || newY < 0 || newY >= d.gridSize) return;
 
     const room = d.rooms[newY][newX];
+    // Maze walls are impassable — route around the collapsed rock.
+    if (room.type === 'wall') {
+      addLog('Collapsed rock. No way through — find another route.', 'info');
+      return;
+    }
+    // Reveal the entered room plus all orthogonally adjacent rooms, so the
+    // map becomes a routing tool: traps/monsters are visible before you step.
     const newRooms = d.rooms.map((row) =>
-      row.map((r) => (r.x === newX && r.y === newY ? { ...r, explored: true } : { ...r }))
+      row.map((r) => {
+        const dist = Math.abs(r.x - newX) + Math.abs(r.y - newY);
+        return dist <= 1 ? { ...r, explored: true } : { ...r };
+      })
     );
     setDungeon({ ...d, rooms: newRooms, playerPos: { x: newX, y: newY } });
     handleRoomEntry(room, p);
-  }, [handleRoomEntry, setDungeon]);
+  }, [addLog, handleRoomEntry, setDungeon]);
 
   const handleCellClick = useCallback((x: number, y: number) => {
     const d = dungeonRef.current;
@@ -137,6 +209,7 @@ export function DungeonScreen() {
     const dx = x - d.playerPos.x;
     const dy = y - d.playerPos.y;
     if (Math.abs(dx) + Math.abs(dy) !== 1) return;
+    if (d.rooms[y][x].type === 'wall') return;
     handleMove(dx, dy);
   }, [handleMove]);
 
@@ -152,10 +225,17 @@ export function DungeonScreen() {
         return;
       }
     }
+    // The seal: floor 30 is the summit until the Demon King falls.
+    if (d.floor >= FINAL_FLOOR && !useMetaStore.getState().endlessUnlocked) {
+      addLog('No path beyond — the seal holds until the Demon King falls.', 'danger');
+      return;
+    }
     const nextFloor = p.floor + 1;
+    playSfx('click');
     updatePlayer({ floor: nextFloor });
-    const newDungeon = generateDungeon(nextFloor);
+    const newDungeon = generateDungeon(nextFloor, floorRng(nextFloor));
     setDungeon(newDungeon);
+    useGameStore.getState().recordRunFloor(nextFloor);
     if (isBossFloor(nextFloor)) {
       addLog(`Descended to floor ${nextFloor} — BOSS. Checkpoint saved.`, 'system');
     } else if (isCheckpointFloor(nextFloor)) {
@@ -174,13 +254,11 @@ export function DungeonScreen() {
 
   const handleFlee = useCallback(() => {
     const d = dungeonRef.current;
-    if (d && !isCheckpointFloor(d.floor)) {
-      // Leaving before 5/10/15/... discards the map — not saved.
-      const nextCheckpoint = Math.ceil(d.floor / 5) * 5;
-      useGameStore.getState().setDungeon(null);
-      addLog(`Fled floor ${d.floor}. Unsaved — progress before floor ${nextCheckpoint} is lost.`, 'system');
-    } else if (d) {
-      addLog(`Fled to town. Checkpoint floor ${d.floor} saved — re-enter to resume.`, 'system');
+    // The active floor map is cached for the run: fleeing to town keeps the
+    // cleared/looted state, so Inn -> re-enter can't reroll fresh loot.
+    if (d) {
+      useGameStore.getState().save();
+      addLog(`Fled floor ${d.floor} to town. Map preserved — re-enter to resume.`, 'system');
     } else {
       addLog('Fled to town.', 'system');
     }
@@ -232,6 +310,8 @@ export function DungeonScreen() {
       case 'stairs': return '▼';
       case 'boss': return '▲';
       case 'start': return '·';
+      case 'wall': return '█';
+      case 'vault': return '▣';
       default: return '?';
     }
   };
@@ -255,6 +335,8 @@ export function DungeonScreen() {
       case 'shop': return `${base}text-terminal-green border-terminal-green/50 font-bold`;
       case 'stairs': return `${base}text-terminal-cyan border-terminal-cyan font-bold shadow-[0_0_6px_rgba(0,255,255,0.25)]`;
       case 'boss': return 'bg-terminal-red/10 text-terminal-red border-terminal-red font-bold shadow-[0_0_8px_rgba(255,0,64,0.3)]';
+      case 'wall': return 'bg-terminal-bg text-terminal-dim/40 border-terminal-dim/20 cursor-default';
+      case 'vault': return `${base}text-terminal-yellow border-terminal-yellow font-bold shadow-[0_0_6px_rgba(255,215,0,0.25)]`;
       default: return `${base}text-terminal-dim border-terminal-dim/30`;
     }
   };
@@ -271,6 +353,8 @@ export function DungeonScreen() {
       case 'shop': return 'Merchant.';
       case 'stairs': return 'Stairs — E to descend.';
       case 'start': return 'Entrance.';
+      case 'wall': return 'Collapsed rock — impassable.';
+      case 'vault': return room.item ? 'Sealed vault — needs a dungeon key.' : 'Opened vault.';
       default: return 'Cleared.';
     }
   };
@@ -282,6 +366,9 @@ export function DungeonScreen() {
       <div className="flex items-center justify-between">
         <h1 className={`text-sm tracking-widest ${theme.labelClass}`}>
           {theme.label}
+          {dungeon.modifier !== 'none' && (
+            <span className="text-terminal-yellow">{MODIFIER_LABEL[dungeon.modifier]}</span>
+          )}
         </h1>
         <Button variant="ghost" size="sm" onClick={handleFlee}>
           {'[Flee]'}
@@ -296,8 +383,8 @@ export function DungeonScreen() {
                 <button
                   key={`${x}-${y}`}
                   onClick={() => handleCellClick(x, y)}
-                  disabled={!isAdjacent(x, y)}
-                  aria-label={`Move to ${x},${y}`}
+                  disabled={!isAdjacent(x, y) || room.type === 'wall'}
+                  aria-label={room.explored ? `Move to ${x},${y}: ${roomDescription(room)}` : `Move to ${x},${y}: unexplored`}
                   className={`w-9 h-9 flex items-center justify-center text-sm font-bold border
                     ${roomStyle(room)} ${
                     isAdjacent(x, y) ? 'cursor-pointer' : 'cursor-default'

@@ -6,11 +6,12 @@ import { calcCritChance } from '../../utils/rng';
 import type { StatType } from '../../types/game';
 
 const ROWS: { id: StatType; label: string; hint: string }[] = [
-  { id: 'str', label: 'STR', hint: '+1 attack' },
-  { id: 'dex', label: 'DEX', hint: '+crit/dodge' },
-  { id: 'int', label: 'INT', hint: '+skill dmg' },
+  { id: 'str', label: 'STR', hint: '+1 attack (Warrior)' },
+  { id: 'dex', label: 'DEX', hint: '+crit/dodge (+1 atk Rogue)' },
+  { id: 'int', label: 'INT', hint: '+skill dmg (+1 atk Mage/Cleric)' },
   { id: 'hp', label: 'HP', hint: `+${HP_PER_STAT_POINT} max` },
   { id: 'mp', label: 'MP', hint: `+${MP_PER_STAT_POINT} max` },
+  { id: 'def', label: 'DEF', hint: '+1 defense' },
 ];
 
 export function StatAllocationPanel() {
@@ -22,11 +23,21 @@ export function StatAllocationPanel() {
   if (!player) return null;
 
   const points = player.statPoints ?? 0;
-  const atkBonus =
-    (player.equipment.weapon?.statBonus?.str || 0) + (player.equipment.accessory?.statBonus?.str || 0);
+  const primary: 'str' | 'dex' | 'int' =
+    player.class === 'rogue' ? 'dex' : player.class === 'mage' || player.class === 'cleric' ? 'int' : 'str';
+  const gearOffense =
+    (player.equipment.weapon?.statBonus?.str || 0) +
+    (player.equipment.weapon?.statBonus?.dex || 0) +
+    (player.equipment.weapon?.statBonus?.int || 0) +
+    (player.equipment.accessory?.statBonus?.str || 0) +
+    (player.equipment.accessory?.statBonus?.dex || 0) +
+    (player.equipment.accessory?.statBonus?.int || 0);
+  const atkBonus = gearOffense;
+  const atkBase = player.stats[primary];
   const defBonus =
-    Math.floor((player.equipment.armor?.statBonus?.hp || 0) / 5) +
-    Math.floor((player.equipment.accessory?.statBonus?.hp || 0) / 5);
+    (player.stats.def ?? 0) +
+    (player.equipment.armor?.statBonus?.def || 0) +
+    (player.equipment.accessory?.statBonus?.def || 0);
   const crit = Math.round(
     calcCritChance(player.stats.dex + (player.equipment.accessory?.statBonus?.dex || 0)) * 100
   );
@@ -44,7 +55,7 @@ export function StatAllocationPanel() {
   return (
     <Panel title={`Stats${points > 0 ? ` — ${points} point${points === 1 ? '' : 's'} to spend!` : ''}`}>
       <div className="text-[11px] text-terminal-dim mb-2">
-        ATK {player.stats.str + atkBonus} · DEF {defBonus} · CRIT {crit}% · Level {player.level} (
+        ATK {atkBase + atkBonus} · DEF {defBonus} · CRIT {crit}% · Level {player.level} (
         {player.exp}/{player.expToNext} EXP)
         {points > 0 ? (
           <span className="text-terminal-yellow"> — distribute your bonus points below.</span>
