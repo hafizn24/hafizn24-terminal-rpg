@@ -39,7 +39,7 @@ export function isValuableItem(item: Item): boolean {
 }
 
 export function ShopScreen() {
-  const { player, updatePlayer, setScreen, selectedShop, shopReturn } = useGameStore();
+  const { player, updatePlayer, setScreen, selectedShop } = useGameStore();
   const addLog = useUIStore((s) => s.addLog);
   const [mode, setMode] = useState<ShopMode>('buy');
   const [pendingConfirm, setPendingConfirm] = useState<string | null>(null);
@@ -69,8 +69,6 @@ export function ShopScreen() {
   const junkCount = junkSlots.reduce((sum, s) => sum + s.quantity, 0);
 
   if (!player) return null;
-
-  const backLabel = shopReturn === 'dungeon' ? '[Back to Dungeon]' : '[Back to Town]';
 
   const getEquippedSlot = (itemId: string): string | null => {
     if (player.equipment.weapon?.id === itemId) return 'Weapon';
@@ -118,7 +116,6 @@ export function ShopScreen() {
 
     const newGold = p.gold + gain;
     useGameStore.getState().updatePlayer({ gold: newGold, inventory: newInv });
-    useGameStore.getState().updateQuestProgress('gold', 'any', newGold);
     useGameStore.getState().save();
     addLog(`Sold ${qty}x ${slot.item.name} for ${gain} gold.`, 'loot');
   };
@@ -168,7 +165,6 @@ export function ShopScreen() {
     const newInv = p.inventory.filter((s) => !junkIds.has(s.item.id));
     const newGold = p.gold + junkTotal;
     useGameStore.getState().updatePlayer({ gold: newGold, inventory: newInv });
-    useGameStore.getState().updateQuestProgress('gold', 'any', newGold);
     useGameStore.getState().save();
     addLog(`Bulk-sold ${junkCount}x loot for ${junkTotal} gold.`, 'loot');
   };
@@ -179,8 +175,8 @@ export function ShopScreen() {
         <h1 className="text-terminal-cyan text-lg tracking-widest uppercase">
           [{SHOP_ICONS[shopType]}] {SHOP_NAMES[shopType]}
         </h1>
-        <Button variant="ghost" size="sm" onClick={() => setScreen(shopReturn)}>
-          {backLabel}
+        <Button variant="ghost" size="sm" onClick={() => setScreen('town')}>
+          [Back to Town]
         </Button>
       </div>
 

@@ -8,7 +8,6 @@ import { InventoryScreen } from './InventoryScreen';
 import { StatsScreen } from './StatsScreen';
 import { GameOverScreen } from './GameOverScreen';
 import { ShopScreen } from './ShopScreen';
-import { QuestBoardScreen } from './QuestBoardScreen';
 import { MetaScreen } from './MetaScreen';
 import { BestiaryScreen } from './BestiaryScreen';
 import { RelicDraftScreen } from './RelicDraftScreen';
@@ -26,7 +25,6 @@ const screenMap: Record<string, React.FC> = {
   stats: StatsScreen,
   gameOver: GameOverScreen,
   shop: ShopScreen,
-  questBoard: QuestBoardScreen,
   meta: MetaScreen,
   bestiary: BestiaryScreen,
   relicDraft: RelicDraftScreen,

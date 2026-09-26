@@ -3,12 +3,11 @@ import { useGameStore } from '../../game/store/gameStore';
 import { useUIStore } from '../../game/store/uiStore';
 import { Button } from '../ui/Button';
 import { Panel } from '../ui/Panel';
-import { StatAllocationPanel } from '../ui/StatAllocationPanel';
 import { getRarityColor } from '../../utils/rng';
 import { compareGear, formatGearDelta } from '../../engine/rules/gear';
 import { getEnchantLevel } from '../../engine/rules/enchant';
 
-type Tab = 'all' | 'equipment' | 'consumables' | 'misc' | 'stats';
+type Tab = 'all' | 'equipment' | 'consumables';
 
 const ACCESSORY_IDS = new Set(['lucky_charm', 'iron_ring', 'sage_amulet', 'ranger_cloak', 'void_ward']);
 
@@ -20,10 +19,9 @@ export function InventoryScreen() {
   if (!player) return null;
 
   const filteredItems = player.inventory.filter((slot) => {
-    if (activeTab === 'all' || activeTab === 'stats') return true;
+    if (activeTab === 'all') return true;
     if (activeTab === 'equipment') return slot.item.type === 'weapon' || slot.item.type === 'armor';
     if (activeTab === 'consumables') return slot.item.type === 'potion' || !!slot.item.effect;
-    if (activeTab === 'misc') return slot.item.type === 'misc' || slot.item.type === 'key';
     return true;
   });
 
@@ -73,10 +71,6 @@ export function InventoryScreen() {
       return;
     }
 
-    if (slot.item.cleanse) {
-      addLog('No affliction outside combat — save the herb for burns and poison.', 'info');
-      return;
-    }
     if (slot.item.healAmount && player.stats.hp >= player.stats.maxHp) {
       addLog('HP already full! Potion not used.', 'info');
       return;
@@ -107,30 +101,10 @@ export function InventoryScreen() {
     addLog(logMsg, 'loot');
   };
 
-  const handleDrop = (itemId: string) => {
-    const slot = player.inventory.find((s) => s.item.id === itemId);
-    if (!slot) return;
-    if (!window.confirm(`Drop 1x ${slot.item.name}? This cannot be undone.`)) return;
-    const newInv = player.inventory
-      .map((s) => (s.item.id === itemId ? { ...s, quantity: s.quantity - 1 } : s))
-      .filter((s) => s.quantity > 0);
-    const newEquipment = { ...player.equipment };
-    if (slot.quantity <= 1) {
-      if (newEquipment.weapon?.id === itemId) newEquipment.weapon = null;
-      if (newEquipment.armor?.id === itemId) newEquipment.armor = null;
-      if (newEquipment.accessory?.id === itemId) newEquipment.accessory = null;
-    }
-    updatePlayer({ inventory: newInv, equipment: newEquipment });
-    addLog('Item dropped.', 'info');
-  };
-
-  const points = player.statPoints ?? 0;
   const tabs: { id: Tab; label: string }[] = [
     { id: 'all', label: 'All' },
     { id: 'equipment', label: 'Gear' },
     { id: 'consumables', label: 'Potions' },
-    { id: 'misc', label: 'Misc' },
-    { id: 'stats', label: points > 0 ? `Stats (${points})` : 'Stats' },
   ];
 
   return (
@@ -157,22 +131,18 @@ export function InventoryScreen() {
         ))}
       </div>
 
-      {activeTab === 'stats' ? (
-        <StatAllocationPanel />
-      ) : (
-        <>
-          <div className="text-[11px] text-terminal-dim">
-            Weapon: {player.equipment.weapon?.name || 'None'} · Armor:{' '}
-            {player.equipment.armor?.name || 'None'} · Acc:{' '}
-            {player.equipment.accessory?.name || 'None'}
-          </div>
+      <div className="text-[11px] text-terminal-dim">
+        Weapon: {player.equipment.weapon?.name || 'None'} · Armor:{' '}
+        {player.equipment.armor?.name || 'None'} · Acc:{' '}
+        {player.equipment.accessory?.name || 'None'} · Sell loot at town shops.
+      </div>
 
-          <Panel title={`Items (${player.inventory.length})`}>
-            {filteredItems.length === 0 ? (
-              <div className="text-terminal-dim text-xs italic">No items.</div>
-            ) : (
-              <div className="space-y-2">
-                {filteredItems.map((slot) => {
+      <Panel title={`Items (${player.inventory.length})`}>
+        {filteredItems.length === 0 ? (
+          <div className="text-terminal-dim text-xs italic">No items. Sell loot at town shops.</div>
+        ) : (
+          <div className="space-y-2">
+            {filteredItems.map((slot) => {
                   const isEquipped =
                     player.equipment.weapon?.id === slot.item.id ||
                     player.equipment.armor?.id === slot.item.id ||
@@ -220,9 +190,6 @@ export function InventoryScreen() {
                           Use
                         </Button>
                       )}
-                      <Button size="sm" variant="danger" onClick={() => handleDrop(slot.item.id)}>
-                        Drop
-                      </Button>
                     </div>
                   </div>
                   );
@@ -230,8 +197,6 @@ export function InventoryScreen() {
               </div>
             )}
           </Panel>
-        </>
-      )}
     </div>
   );
 }

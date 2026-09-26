@@ -36,7 +36,6 @@ function baseSave(): SaveData {
     version: SAVE_VERSION,
     player: basePlayer(),
     dungeon: null,
-    quests: [],
     lastSave: new Date().toISOString(),
     stats: { bestFloor: 4, bossesKilled: 0, runsStarted: 1 },
     runSeed: 123,
@@ -83,18 +82,17 @@ describe('save system', () => {
         ...basePlayer(),
         // v1 shape: inline Item objects, no relics array.
         relics: undefined,
-        inventory: [{ item: { ...ITEMS['hp_potion_m'] }, quantity: 1 }],
+        inventory: [{ item: { ...ITEMS['hp_potion_s'] }, quantity: 1 }],
         equipment: { weapon: { ...ITEMS['rusty_sword'] }, armor: null, accessory: null },
       },
       dungeon: null,
-      quests: [],
       lastSave: new Date().toISOString(),
       stats: { bestFloor: 2, bossesKilled: 0, runsStarted: 1 },
     };
     localStorage.setItem(KEY, JSON.stringify(legacy));
     const loaded = loadGame()!;
     expect(loaded.version).toBe(SAVE_VERSION);
-    expect(loaded.player.inventory[0].item.id).toBe('hp_potion_m');
+    expect(loaded.player.inventory[0].item.id).toBe('hp_potion_s');
     expect(loaded.player.equipment.weapon?.id).toBe('rusty_sword');
     expect(loaded.player.relics).toEqual([]);
   });
@@ -134,5 +132,55 @@ describe('save system', () => {
     expect(saveGame(s)).toBe(true);
     const loaded = loadGame()!;
     expect(loaded.player.inventory[0].instanceData?.enchantLevel).toBe(3);
+  });
+
+  it('migrates v3 retired potions into the single HP tier', () => {
+    const legacy = {
+      version: 3,
+      hash: 'stale',
+      player: {
+        ...basePlayer(),
+        inventory: [
+          { itemId: 'hp_potion_m', quantity: 2 },
+          { itemId: 'hp_potion_l', quantity: 1 },
+          { itemId: 'purifying_herb', quantity: 3 },
+        ],
+        equipment: { weapon: 'iron_sword', armor: null, accessory: null },
+      },
+      dungeon: null,
+      lastSave: new Date().toISOString(),
+      stats: { bestFloor: 2, bossesKilled: 0, runsStarted: 1 },
+    };
+    localStorage.setItem(KEY, JSON.stringify(legacy));
+    const loaded = loadGame()!;
+    const ids = loaded.player.inventory.map((s) => s.item.id);
+    expect(ids).toEqual(['hp_potion_s']);
+    expect(loaded.player.inventory[0].quantity).toBe(3);
+  });
+
+  it('migrates v3 cursed floors and shop rooms away', () => {
+    const legacy = {
+      version: 3,
+      hash: 'stale',
+      player: {
+        ...basePlayer(),
+        inventory: [{ itemId: 'hp_potion_s', quantity: 1 }],
+        equipment: { weapon: null, armor: null, accessory: null },
+      },
+      dungeon: {
+        floor: 4,
+        rooms: [[{ type: 'shop', explored: true, x: 0, y: 0 }]],
+        playerPos: { x: 0, y: 0 },
+        gridSize: 1,
+        modifier: 'cursed',
+        affix: 'none',
+      },
+      lastSave: new Date().toISOString(),
+      stats: { bestFloor: 4, bossesKilled: 0, runsStarted: 1 },
+    };
+    localStorage.setItem(KEY, JSON.stringify(legacy));
+    const loaded = loadGame()!;
+    expect(loaded.dungeon?.modifier).toBe('none');
+    expect(loaded.dungeon?.rooms[0][0].type).toBe('empty');
   });
 });

@@ -6,13 +6,12 @@ import { seedFromString } from '../engine/rng';
 const STORAGE_KEY = 'terminal_rpg_save';
 
 /** Current on-disk schema. Bump when the serialized shape changes. */
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 export interface SaveData {
   version: number;
   player: Player;
   dungeon: DungeonState | null;
-  quests: import('../types/game').Quest[];
   lastSave: string;
   stats: GameStats;
   /** Seed for deterministic generation. Absent/null = legacy unseeded save. */
@@ -50,7 +49,6 @@ interface DiskSave {
   hash: string;
   player: SerializedPlayer;
   dungeon: DungeonState | null;
-  quests: SaveData['quests'];
   lastSave: string;
   stats: GameStats;
   runSeed?: number | null;
@@ -160,12 +158,45 @@ function migratePlayer(raw: Record<string, unknown>, version: number): Serialize
       }
     }
   }
+  if (version < 4) {
+    // v3 -> v4: single-HP-potion economy. Fold the retired M/L tiers into S
+    // (same total healing), drop the retired herb (no equivalent).
+    const inv = (p as unknown as { inventory?: SerializedSlot[] }).inventory ?? [];
+    const merged = new Map<string, SerializedSlot>();
+    for (const s of inv) {
+      let id = s.itemId;
+      if (id === 'hp_potion_m' || id === 'hp_potion_l') id = 'hp_potion_s';
+      if (id === 'purifying_herb') continue;
+      const qty = Math.floor(s.quantity);
+      if (!(qty > 0)) continue;
+      const prev = merged.get(id);
+      if (prev) {
+        prev.quantity += qty;
+      } else {
+        merged.set(id, { itemId: id, quantity: qty, ...(s.instanceData ? { instanceData: s.instanceData } : {}) });
+      }
+    }
+    (p as unknown as { inventory: SerializedSlot[] }).inventory = [...merged.values()];
+  }
   return p;
 }
 
 function migrateDungeon(raw: (DungeonState & { modifier?: DungeonState['modifier']; affix?: DungeonState['affix'] }) | null): DungeonState | null {
   if (!raw) return null;
-  return { ...raw, modifier: raw.modifier ?? 'none', affix: raw.affix ?? 'none' };
+  // v3 -> v4: 'cursed' retires to 'none' (shrines on every floor now);
+  // 'shop' rooms retire to 'empty' (shops are town-only now).
+  const modifier = (raw.modifier as string) === 'cursed' ? 'none' : (raw.modifier ?? 'none');
+  const rooms = raw.rooms?.map((row) =>
+    row.map((r) => {
+      if ((r as unknown as { type?: string }).type === 'shop') {
+        const { shopItems: _dropped, ...rest } = r as unknown as Record<string, unknown>;
+        void _dropped;
+        return { ...(rest as unknown as DungeonState['rooms'][number][number]), type: 'empty' as const, enemy: undefined };
+      }
+      return r;
+    }),
+  ) ?? raw.rooms;
+  return { ...raw, rooms, modifier, affix: raw.affix ?? 'none' };
 }
 
 export function saveGame(data: SaveData): boolean {
@@ -174,7 +205,6 @@ export function saveGame(data: SaveData): boolean {
       version: SAVE_VERSION,
       player: serializePlayer(data.player),
       dungeon: data.dungeon,
-      quests: data.quests,
       lastSave: data.lastSave,
       stats: data.stats,
       runSeed: data.runSeed ?? null,
@@ -216,7 +246,6 @@ export function loadGame(): SaveData | null {
       version: SAVE_VERSION,
       player,
       dungeon: migrateDungeon(parsed.dungeon ?? null),
-      quests: Array.isArray(parsed.quests) ? parsed.quests : [],
       runSeed: typeof parsed.runSeed === 'number' ? parsed.runSeed : null,
       dailyKey: typeof parsed.dailyKey === 'string' ? parsed.dailyKey : null,
       lastSave: typeof parsed.lastSave === 'string' ? parsed.lastSave : new Date().toISOString(),

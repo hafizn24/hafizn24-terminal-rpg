@@ -1,33 +1,15 @@
 import type { Item } from '../../types/game';
 
 export const ITEMS: Record<string, Item> = {
-  // === POTIONS ===
+  // === POTIONS (one HP tier — scales into the late game via Inn/shrines) ===
   hp_potion_s: {
     id: 'hp_potion_s',
-    name: 'Minor HP Potion',
-    type: 'potion',
-    rarity: 'common',
-    description: 'Restores 30 HP.',
-    price: 25,
-    healAmount: 30,
-  },
-  hp_potion_m: {
-    id: 'hp_potion_m',
     name: 'HP Potion',
     type: 'potion',
     rarity: 'common',
     description: 'Restores 60 HP.',
-    price: 60,
+    price: 50,
     healAmount: 60,
-  },
-  hp_potion_l: {
-    id: 'hp_potion_l',
-    name: 'Greater HP Potion',
-    type: 'potion',
-    rarity: 'uncommon',
-    description: 'Restores 120 HP.',
-    price: 150,
-    healAmount: 120,
   },
   mp_potion: {
     id: 'mp_potion',
@@ -303,16 +285,7 @@ export const ITEMS: Record<string, Item> = {
     price: 100,
   },
 
-  // === COMBAT CONSUMABLES ===
-  purifying_herb: {
-    id: 'purifying_herb',
-    name: 'Purifying Herb',
-    type: 'potion',
-    rarity: 'common',
-    description: 'Purges burn and poison. Usable anywhere.',
-    price: 35,
-    cleanse: true,
-  },
+  // === COMBAT CONSUMABLES (bomb = damage, smoke = escape) ===
   fire_bomb: {
     id: 'fire_bomb',
     name: 'Fire Bomb',
@@ -336,6 +309,6 @@ export const ITEMS: Record<string, Item> = {
 
 export const SHOP_STOCK: Record<string, string[]> = {
   blacksmith: ['rusty_sword', 'iron_sword', 'steel_sword', 'dagger', 'bone_sword', 'short_bow', 'longbow', 'leather_armor', 'chain_mail', 'plate_armor', 'bone_shield'],
-  potion_shop: ['hp_potion_s', 'hp_potion_m', 'hp_potion_l', 'mp_potion', 'purifying_herb', 'fire_bomb', 'smoke_bomb', 'dungeon_key'],
+  potion_shop: ['hp_potion_s', 'mp_potion', 'fire_bomb', 'smoke_bomb', 'dungeon_key'],
   magic_shop: ['wooden_staff', 'magic_staff', 'crystal_staff', 'mage_robe', 'lucky_charm', 'iron_ring', 'sage_amulet', 'ranger_cloak', 'void_ward', 'dungeon_key'],
 };

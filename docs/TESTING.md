@@ -84,14 +84,13 @@ npm run build
 
 ### 6. Inventory + Stats System
 
-- [ ] From Town, click "Stats" — dedicated Stats screen with STR/DEX/INT/HP/MP allocation
+- [ ] From Town, click "Stats" — dedicated Stats screen with STR/DEX/INT/HP/MP allocation (DEF is earned via growth/gear/Smithy, not bought)
 - [ ] From Town, click "Inventory"
-- [ ] **Expected:** Tabbed view (All/Gear/Potions/Misc/Stats), one-line equipment summary, NO embedded stats panel outside the Stats tab
-- [ ] Click the "Stats" tab — shows the same allocation panel (dedicated tab)
+- [ ] **Expected:** Tabbed view (All/Gear/Potions), one-line equipment summary, Stats live on their own screen
 - [ ] Click "Equip" on a weapon — equipment slot updates
 - [ ] Click "Unequip" — returns to inventory
 - [ ] Click "Use" on a potion — HP/MP restored
-- [ ] Click "Drop" — item removed from inventory (confirm prompt)
+- [ ] Sell loot at town shops (no Drop action — sell instead)
 
 ### 6b. Checkpoint Saves + Boss Floors
 
@@ -100,14 +99,12 @@ npm run build
 - [ ] Flee to town on floor 5 — map kept, "Resume Dungeon" works after reload
 - [ ] `JSON.parse(localStorage.getItem('terminal_rpg_save')).dungeon` is non-null only on 5/10/15/...
 
-### 7. Quest System
+### 7. Feats (Achievements)
 
-- [ ] From Town, click "Quests"
-- [ ] **Expected:** Guild Board with Active/Available tabs, text-only progress (no bars)
-- [ ] Click "Accept" on a quest — moves to Active tab
-- [ ] Go fight enemies — quest progress should update
-- [ ] Complete quest objective — "Claim" button appears
-- [ ] Click "Claim" — gold/EXP rewards added
+- [ ] From Town, click "Feats"
+- [ ] **Expected:** 12 skill-based achievements (first blood, flawless boss, vault raider, etc.), locked shows `???`
+- [ ] Kill 1 enemy — `first_blood` unlocks with toast + SFX
+- [ ] (Guild Board quests removed — feats + Bestiary + daily leaderboard are the meta goals)
 
 ### 8. Inn Rest
 
@@ -124,8 +121,8 @@ npm run build
 
 ### 8c. Achievements
 
-- [ ] From Town, click "Achievements"
-- [ ] **Expected:** ~20 achievements (first blood, flawless boss, vault raider, etc.), locked shows `???`
+- [ ] From Town, click "Feats"
+- [ ] **Expected:** 12 achievements (first blood, flawless boss, vault raider, etc.), locked shows `???`
 - [ ] Kill 1 enemy — `first_blood` unlocks with toast + SFX
 
 ### 9. Game Over & New Game
@@ -165,8 +162,6 @@ JSON.parse(localStorage.getItem('terminal_rpg_save'))
 
 # Clear all game data:
 localStorage.removeItem('terminal_rpg_save')
-localStorage.removeItem('terminal_rpg_quests')
-localStorage.removeItem('terminal_rpg_daily_reset')
 
 # Force fresh state:
 location.reload()

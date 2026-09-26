@@ -637,20 +637,8 @@ export function CombatScreen() {
         return;
       }
 
-      // Purifying Herb: the only cleanse outside the Cleric. Never wasted —
-      // usable at full HP, and it still costs the turn.
-      if (item.cleanse) {
-        consumeOne(itemId);
-        const had = stateRef.current.playerStatus;
-        const msg = had
-          ? `Used ${item.name}. ${had.id === 'burn' ? 'Burn' : 'Poison'} purged!`
-          : `Used ${item.name}. (No affliction.)`;
-        setState((prev) => ({ ...prev, playerStatus: null, isPlayerTurn: false, combatLog: [...prev.combatLog, msg] }));
-        addLog(msg, 'loot');
-        setTimeout(enemyTurn, 800);
-        return;
-      }
-
+      // Burn/poison are answered by the Cleric's Cleanse, shrines, and the
+      // Inn — no universal cure item, so afflictions stay meaningful.
       if (item.healAmount && p.stats.hp >= p.stats.maxHp) {
         setState((prev) => ({ ...prev, combatLog: [...prev.combatLog, 'HP already full! Potion not used.'] }));
         return;
@@ -680,17 +668,6 @@ export function CombatScreen() {
       updatePlayer({ stats: newStats });
       setState((prev) => ({ ...prev, isPlayerTurn: false, combatLog: [...prev.combatLog, logMsg] }));
       addLog(logMsg, 'loot');
-      try {
-        const k = 'terminal_rpg_potions_used';
-        const n = (Number(localStorage.getItem(k)) || 0) + 1;
-        localStorage.setItem(k, String(n));
-        if (n >= 10 && useMetaStore.getState().unlockAchievement('alchemist')) {
-          addLog('Feat unlocked: Alchemist!', 'loot');
-          playSfx('achievement');
-        }
-      } catch {
-        /* cosmetic */
-      }
       setTimeout(enemyTurn, 800);
     },
     [addDamageNumber, addLog, applyStatusTick, checkVictory, consumeOne, enemyTurn, setScreen, triggerShake, updatePlayer]
@@ -712,14 +689,6 @@ export function CombatScreen() {
     );
     if (mpPotion) {
       handleUseItemId(mpPotion.item.id);
-      return;
-    }
-    // Afflicted? Reach for the herb before anything else.
-    const herb = p.inventory.find(
-      (sl) => sl.item.cleanse && sl.quantity > 0 && stateRef.current.playerStatus
-    );
-    if (herb) {
-      handleUseItemId(herb.item.id);
       return;
     }
     const anyPotion = p.inventory.find(
@@ -774,7 +743,7 @@ export function CombatScreen() {
     // Elites drop extra consumables/accessories — and sometimes a vault key.
     if (e.isElite) {
       if (chance(0.35)) {
-        const bonus = pickRandom(['fire_bomb', 'smoke_bomb', 'hp_potion_m', 'lucky_charm', 'iron_ring']);
+        const bonus = pickRandom(['fire_bomb', 'smoke_bomb', 'hp_potion_s', 'lucky_charm', 'iron_ring']);
         store.addItem(bonus, 1);
         addLog(`Elite loot: ${bonus.replace(/_/g, ' ')}!`, 'loot');
       }
@@ -803,11 +772,6 @@ export function CombatScreen() {
       }
     }
 
-    store.updateQuestProgress('kill', e.id);
-    store.updateQuestProgress('kill', 'any');
-    const afterGold = useGameStore.getState().player!;
-    store.updateQuestProgress('gold', 'any', afterGold.gold);
-
     const isBoss = dungeonRef.current
       ? dungeonRef.current.rooms[dungeonRef.current.playerPos.y][dungeonRef.current.playerPos.x].type === 'boss'
       : false;
@@ -835,13 +799,9 @@ export function CombatScreen() {
         if (cur && cur.stats.hp >= cur.stats.maxHp) unlock('flawless_boss', 'Flawless');
       }
       const curP = useGameStore.getState().player;
-      if (curP && curP.gold >= 1000) unlock('gold_1000', 'Hoarder');
-      if (curP && curP.level >= 10) unlock('level_10', 'Veteran');
-      if (curP && curP.level >= 15) unlock('level_15', 'Legend');
       if (curP && (curP.relics ?? []).length >= 3) unlock('relic_collector', 'Relic Collector');
       const kills = Object.keys(meta.kills ?? {}).length;
       if (kills >= 10) unlock('bestiary_10', 'Naturalist');
-      if (useGameStore.getState().dailyKey) unlock('daily', 'Challenger');
     } catch {
       /* achievements are cosmetic */
     }
@@ -968,7 +928,6 @@ export function CombatScreen() {
   const mpPotions = player.inventory.filter((s) => s.item.mpRestoreAmount && !s.item.healAmount && s.quantity > 0);
   const bombs = player.inventory.filter((s) => s.item.effect === 'bomb' && s.quantity > 0);
   const smokes = player.inventory.filter((s) => s.item.effect === 'smoke' && s.quantity > 0);
-  const herbs = player.inventory.filter((s) => s.item.cleanse && s.quantity > 0);
   const hpCount = hpPotions.reduce((a, s) => a + s.quantity, 0);
   const mpCount = mpPotions.reduce((a, s) => a + s.quantity, 0);
   const bombCount = bombs.reduce((a, s) => a + s.quantity, 0);
@@ -1086,7 +1045,7 @@ export function CombatScreen() {
               </Button>
             );
           })}
-          {(bombCount > 0 || smokeCount > 0 || herbs.length > 0) && (
+          {(bombCount > 0 || smokeCount > 0) && (
             <div className="flex gap-2 flex-wrap">
               {bombs.map((s) => (
                 <Button key={s.item.id} size="sm" onClick={() => handleUseItemId(s.item.id)} disabled={!state.isPlayerTurn}>
@@ -1096,11 +1055,6 @@ export function CombatScreen() {
               {smokes.map((s) => (
                 <Button key={s.item.id} size="sm" variant="ghost" onClick={() => handleUseItemId(s.item.id)} disabled={!state.isPlayerTurn}>
                   {`Smoke x${s.quantity}`}
-                </Button>
-              ))}
-              {herbs.map((s) => (
-                <Button key={s.item.id} size="sm" variant="ghost" onClick={() => handleUseItemId(s.item.id)} disabled={!state.isPlayerTurn}>
-                  {`Herb x${s.quantity}`}
                 </Button>
               ))}
             </div>

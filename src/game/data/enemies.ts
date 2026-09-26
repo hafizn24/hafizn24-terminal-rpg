@@ -75,7 +75,7 @@ export const ENEMIES: Enemy[] = [
     lootTable: [
       { itemId: 'bone_sword', chance: 0.12, quantity: 1 },
       { itemId: 'bone_shield', chance: 0.08, quantity: 1 },
-      { itemId: 'hp_potion_m', chance: 0.25, quantity: 1 },
+      { itemId: 'hp_potion_s', chance: 0.25, quantity: 1 },
     ],
     skills: [{ name: 'Bone Crush', power: 1.5, chance: 0.25 }],
   },
@@ -130,7 +130,7 @@ export const ENEMIES: Enemy[] = [
     lootTable: [
       { itemId: 'iron_sword', chance: 0.12, quantity: 1 },
       { itemId: 'chain_mail', chance: 0.08, quantity: 1 },
-      { itemId: 'hp_potion_l', chance: 0.2, quantity: 1 },
+      { itemId: 'hp_potion_s', chance: 0.2, quantity: 1 },
     ],
     skills: [
       { name: 'Cleave', power: 1.8, chance: 0.3 },
@@ -155,7 +155,7 @@ export const ENEMIES: Enemy[] = [
     goldReward: 30,
     lootTable: [
       { itemId: 'dagger', chance: 0.15, quantity: 1 },
-      { itemId: 'hp_potion_m', chance: 0.3, quantity: 1 },
+      { itemId: 'hp_potion_s', chance: 0.3, quantity: 1 },
       { itemId: 'old_coin', chance: 0.2, quantity: 2 },
     ],
     skills: [
@@ -240,7 +240,7 @@ export const ENEMIES: Enemy[] = [
     lootTable: [
       { itemId: 'steel_sword', chance: 0.1, quantity: 1 },
       { itemId: 'plate_armor', chance: 0.05, quantity: 1 },
-      { itemId: 'hp_potion_l', chance: 0.5, quantity: 3 },
+      { itemId: 'hp_potion_s', chance: 0.5, quantity: 3 },
     ],
     skills: [
       { name: 'Fire Breath', power: 2.8, chance: 0.4 },
@@ -266,7 +266,7 @@ export const ENEMIES: Enemy[] = [
     lootTable: [
       { itemId: 'steel_sword', chance: 0.15, quantity: 1 },
       { itemId: 'plate_armor', chance: 0.08, quantity: 1 },
-      { itemId: 'hp_potion_l', chance: 0.4, quantity: 2 },
+      { itemId: 'hp_potion_s', chance: 0.4, quantity: 2 },
     ],
     skills: [
       { name: 'Hellfire Slash', power: 3.0, chance: 0.35 },
@@ -343,7 +343,7 @@ export const ENEMIES: Enemy[] = [
     maxFloor: 28,
     lootTable: [
       { itemId: 'iron_sword', chance: 0.12, quantity: 1 },
-      { itemId: 'hp_potion_l', chance: 0.25, quantity: 1 },
+      { itemId: 'hp_potion_s', chance: 0.25, quantity: 1 },
     ],
     skills: [
       { name: 'Reckless Slam', power: 2.2, chance: 0.35 },
@@ -495,7 +495,7 @@ export const ENEMIES: Enemy[] = [
     maxFloor: 26,
     lootTable: [
       { itemId: 'chain_mail', chance: 0.1, quantity: 1 },
-      { itemId: 'hp_potion_m', chance: 0.3, quantity: 1 },
+      { itemId: 'hp_potion_s', chance: 0.3, quantity: 1 },
     ],
     skills: [{ name: 'Burrow Crush', power: 2.1, chance: 0.35 }],
   },
@@ -546,7 +546,7 @@ export const BOSS_ENEMIES: Enemy[] = [
     lootTable: [
       { itemId: 'iron_sword', chance: 0.5, quantity: 1 },
       { itemId: 'chain_mail', chance: 0.3, quantity: 1 },
-      { itemId: 'hp_potion_l', chance: 0.8, quantity: 2 },
+      { itemId: 'hp_potion_s', chance: 0.8, quantity: 2 },
     ],
     skills: [
       { name: 'Royal Smash', power: 2.0, chance: 0.4 },
@@ -606,7 +606,7 @@ export const BOSS_ENEMIES: Enemy[] = [
     lootTable: [
       { itemId: 'flame_blade', chance: 0.25, quantity: 1 },
       { itemId: 'mage_robe', chance: 0.3, quantity: 1 },
-      { itemId: 'hp_potion_l', chance: 1.0, quantity: 3 },
+      { itemId: 'hp_potion_s', chance: 1.0, quantity: 3 },
     ],
     skills: [
       { name: 'Crown of Fire', power: 3.0, chance: 0.45, status: { id: 'burn', dmg: 7, turns: 2 } },
@@ -633,7 +633,7 @@ export const BOSS_ENEMIES: Enemy[] = [
     lootTable: [
       { itemId: 'flame_blade', chance: 0.5, quantity: 1 },
       { itemId: 'plate_armor', chance: 0.3, quantity: 1 },
-      { itemId: 'hp_potion_l', chance: 1.0, quantity: 5 },
+      { itemId: 'hp_potion_s', chance: 1.0, quantity: 5 },
     ],
     skills: [
       { name: 'Inferno Breath', power: 3.5, chance: 0.5 },
@@ -664,7 +664,7 @@ export const BOSS_ENEMIES: Enemy[] = [
     lootTable: [
       { itemId: 'shadow_blade', chance: 0.4, quantity: 1 },
       { itemId: 'sage_amulet', chance: 0.3, quantity: 1 },
-      { itemId: 'hp_potion_l', chance: 1.0, quantity: 6 },
+      { itemId: 'hp_potion_s', chance: 1.0, quantity: 6 },
     ],
     skills: [
       { name: 'Void Rend', power: 3.2, chance: 0.45 },
@@ -692,7 +692,7 @@ export const BOSS_ENEMIES: Enemy[] = [
       { itemId: 'flame_blade', chance: 0.8, quantity: 1 },
       { itemId: 'plate_armor', chance: 0.3, quantity: 1 },
       { itemId: 'crystal_staff', chance: 0.3, quantity: 1 },
-      { itemId: 'hp_potion_l', chance: 1.0, quantity: 10 },
+      { itemId: 'hp_potion_s', chance: 1.0, quantity: 10 },
     ],
     skills: [
       { name: 'Hellfire Storm', power: 4.0, chance: 0.4 },

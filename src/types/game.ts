@@ -10,7 +10,6 @@ export type Screen =
   | 'stats'
   | 'gameOver'
   | 'shop'
-  | 'questBoard'
   | 'meta'
   | 'bestiary'
   | 'relicDraft'
@@ -27,7 +26,6 @@ export type RoomType =
   | 'monster'
   | 'treasure'
   | 'trap'
-  | 'shop'
   | 'stairs'
   | 'boss'
   | 'elite'
@@ -36,8 +34,8 @@ export type RoomType =
   | 'wall'
   | 'vault';
 
-/** One rolled floor modifier — variance per line of code. Shown in the header. */
-export type FloorModifier = 'none' | 'golden' | 'cursed' | 'swarm';
+/** One rolled floor modifier — positive variance only. Shown in the header. */
+export type FloorModifier = 'none' | 'golden' | 'swarm';
 
 /** Endless affix (floors 31+): rotating pressure beyond the seal. */
 export type FloorAffix = 'none' | 'vampiric' | 'arcane' | 'ironclad';
@@ -103,8 +101,6 @@ export interface Item {
   mpRestoreAmount?: number;
   effect?: 'bomb' | 'smoke';
   effectPower?: number;
-  /** Removes burn/poison when used (the only cleanse outside the Cleric). */
-  cleanse?: boolean;
   ascii?: string;
 }
 
@@ -187,7 +183,6 @@ export interface Room {
   enemy?: Enemy;
   item?: Item;
   trapDamage?: number;
-  shopItems?: Item[];
 }
 
 export interface DungeonState {
@@ -199,27 +194,6 @@ export interface DungeonState {
   modifier: FloorModifier;
   /** Endless pressure affix (floors 31+). Defaults to 'none'. */
   affix: FloorAffix;
-  /** Forced daily modifier label (e.g. daily swarm day), if any. */
-  dailyModifier?: FloorModifier | null;
-}
-
-export interface Quest {
-  id: string;
-  name: string;
-  description: string;
-  type: 'daily' | 'side';
-  objective: {
-    type: 'kill' | 'floor' | 'gold';
-    target: string;
-    required: number;
-  };
-  progress: number;
-  reward: {
-    gold: number;
-    exp: number;
-    itemId?: string;
-  };
-  completed: boolean;
 }
 
 export interface GameStats {
@@ -272,7 +246,6 @@ export interface GameState {
   currentScreen: Screen;
   player: Player | null;
   dungeon: DungeonState | null;
-  quests: Quest[];
   gameOverMessage: string;
   lastSave: string;
 }

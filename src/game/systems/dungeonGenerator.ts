@@ -1,6 +1,6 @@
 import type { FloorAffix, FloorModifier, Room, RoomType, DungeonState, Enemy, Item } from '../../types/game';
 import { ENEMIES, BOSS_ENEMIES } from '../data/enemies';
-import { ITEMS, SHOP_STOCK } from '../data/items';
+import { ITEMS } from '../data/items';
 import { randomInt, pickRandom, chance, shuffleArray } from '../../utils/rng';
 import { rngChance, rngFloat, rngInt, rngPick, rngShuffle, type Rng } from '../../engine/rng';
 
@@ -24,33 +24,19 @@ export function gridSizeForFloor(floor: number): number {
   return 5;
 }
 
-// Shop balance: at most 0-1 shops per floor (30% chance), with a pity
-// timer that forces 1 shop if 3 consecutive floors spawned without one.
-const SHOP_SPAWN_CHANCE = 0.3;
-const SHOP_PITY_FLOORS = 3;
-let consecutiveFloorsWithoutShop = 0;
-
-export function resetShopPity(): void {
-  consecutiveFloorsWithoutShop = 0;
-}
-
-export function getShopPity(): number {
-  return consecutiveFloorsWithoutShop;
-}
-
 /**
  * Generate a dungeon floor. Pass a seeded `Rng` (e.g. `rngForFloor(runSeed,
  * floor)`) for fully deterministic output — same seed + floor always yields
  * the same map, which powers daily runs, replays, and balance tests.
- * Without `rng` the legacy Math.random path (with shop pity timer) is used.
+ * Shops are town-only; the dungeon is pure delve (no merchant rooms).
  */
-export function generateDungeon(floor: number, rng?: Rng, forcedModifier?: FloorModifier): DungeonState {
+export function generateDungeon(floor: number, rng?: Rng): DungeonState {
   for (let attempt = 0; attempt < 30; attempt++) {
-    const dungeon = attemptFloor(floor, rng, attempt > 20, forcedModifier);
+    const dungeon = attemptFloor(floor, rng, attempt > 20);
     if (dungeon) return dungeon;
   }
   // Practically unreachable: the no-walls fallback always connects.
-  return attemptFloor(floor, rng, true, forcedModifier) as DungeonState;
+  return attemptFloor(floor, rng, true) as DungeonState;
 }
 
 interface Helpers {
@@ -71,7 +57,7 @@ function helpersFor(rng?: Rng): Helpers {
   };
 }
 
-function attemptFloor(floor: number, rng: Rng | undefined, noWalls: boolean, forcedModifier?: FloorModifier): DungeonState | null {
+function attemptFloor(floor: number, rng: Rng | undefined, noWalls: boolean): DungeonState | null {
   const h = helpersFor(rng);
   const n = gridSizeForFloor(floor);
   const rooms: Room[][] = [];
@@ -150,8 +136,8 @@ function attemptFloor(floor: number, rng: Rng | undefined, noWalls: boolean, for
   }
 
   // Floor modifier: one roll per floor, shown in the header.
-  // Daily challenge can force one (e.g. swarm day) via `forcedModifier`.
-  const modifier = forcedModifier ?? rollModifier(h.roll());
+  // Positive variance only — no cursed floors, shrines every floor.
+  const modifier = rollModifier(h.roll());
 
   // Endless affix: rotating pressure past the seal (floors 31+).
   const affix = rollAffix(floor, h.roll());
@@ -166,29 +152,14 @@ function attemptFloor(floor: number, rng: Rng | undefined, noWalls: boolean, for
     for (const r of gold) r.type = 'treasure';
   }
 
-  // Guarantee one shrine per floor (except cursed floors) by converting a
-  // random empty room.
-  if (modifier !== 'cursed') {
+  // Guarantee one shrine per floor by converting a random empty room.
+  {
     const empties = emptiesOf();
     if (empties.length > 0) {
       const shrineRoom = h.pick(empties);
       shrineRoom.type = 'shrine';
       empties.splice(empties.indexOf(shrineRoom), 1);
     }
-  }
-
-  // Place 0-1 shops per floor: 30% chance, or force one if pity kicks in.
-  // Seeded runs skip the module-level pity counter (hidden mutable state breaks
-  // determinism) and use a pure per-floor roll instead.
-  const empties = emptiesOf();
-  const shouldPlaceShop = rng
-    ? h.ch(SHOP_SPAWN_CHANCE)
-    : consecutiveFloorsWithoutShop >= SHOP_PITY_FLOORS || h.ch(SHOP_SPAWN_CHANCE);
-  if (shouldPlaceShop && empties.length > 0) {
-    h.pick(empties).type = 'shop';
-    consecutiveFloorsWithoutShop = 0;
-  } else if (!rng) {
-    consecutiveFloorsWithoutShop += 1;
   }
 
   // Locked vault (floor 3+): epic-tier loot behind the key item type.
@@ -221,11 +192,6 @@ function attemptFloor(floor: number, rng: Rng | undefined, noWalls: boolean, for
       if (room.type === 'trap') {
         room.trapDamage = h.rInt(5, 15) + floor * 2;
       }
-
-      if (room.type === 'shop') {
-        const stock = h.pick(Object.values(SHOP_STOCK));
-        room.shopItems = stock.map((id) => ITEMS[id]).filter(Boolean);
-      }
     }
   }
 
@@ -246,13 +212,12 @@ function attemptFloor(floor: number, rng: Rng | undefined, noWalls: boolean, for
     }
   }
 
-  return { floor, rooms, playerPos: { x: 0, y: 0 }, gridSize: n, modifier, affix, dailyModifier: forcedModifier ?? null };
+  return { floor, rooms, playerPos: { x: 0, y: 0 }, gridSize: n, modifier, affix };
 }
 
 function rollModifier(roll: number): FloorModifier {
-  if (roll < 0.6) return 'none';
-  if (roll < 0.75) return 'golden';
-  if (roll < 0.87) return 'cursed';
+  if (roll < 0.7) return 'none';
+  if (roll < 0.85) return 'golden';
   return 'swarm';
 }
 
@@ -277,18 +242,6 @@ export function applyAffix(enemy: Enemy, affix: FloorAffix): Enemy {
   }
   // ironclad
   return { ...enemy, defense: Math.floor(enemy.defense * 1.3) + 2 };
-}
-
-/** Daily forced modifier: deterministic per calendar day (swarm/cursed/golden rotation). */
-export function getDailyModifier(dateKey: string): FloorModifier | null {
-  if (!dateKey) return null;
-  let h = 0;
-  for (let i = 0; i < dateKey.length; i++) h = (Math.imul(h, 31) + dateKey.charCodeAt(i)) | 0;
-  const r = Math.abs(h) % 7;
-  if (r === 0) return 'swarm';
-  if (r === 1) return 'golden';
-  if (r === 2) return 'cursed';
-  return null;
 }
 
 /** BFS over non-wall cells from (0,0). Exported for tests. */

@@ -82,11 +82,11 @@ describe('progression rules', () => {
     expect(r.stats.def).toBe(mage.baseStats.def + mage.growth.def * (r.level - 1));
   });
 
-  it('allocates every stat type, including def', () => {
+  it('allocates combat stats (DEF is earned, not bought)', () => {
     const mage = CLASSES.find((c) => c.id === 'mage')!;
     const base = { ...mage.baseStats };
-    expect(applyStatPointToStats(base, 'def').stats.def).toBe(base.def + 1);
     expect(applyStatPointToStats(base, 'hp').stats.maxHp).toBe(base.maxHp + 10);
+    expect(applyStatPointToStats(base, 'def').spent).toBe(false);
     expect(applyStatPointToStats(base, 'nope' as never).spent).toBe(false);
   });
 
@@ -223,16 +223,18 @@ describe('dungeon generation', () => {
     }
   });
 
-  it('cursed floors have no shrine; every modifier appears', () => {
+  it('rolls only positive-variance modifiers and keeps at most one shrine', () => {
     const seen = new Set<string>();
+    let shrineFloors = 0;
     for (let seed = 1; seed <= 200; seed++) {
       const d = generateDungeon(7, rngForFloor(seed, 7));
       seen.add(d.modifier);
-      if (d.modifier === 'cursed') {
-        expect(d.rooms.flat().filter((r) => r.type === 'shrine')).toHaveLength(0);
-      }
+      const shrines = d.rooms.flat().filter((r) => r.type === 'shrine');
+      expect(shrines.length).toBeLessThanOrEqual(1);
+      if (shrines.length === 1) shrineFloors++;
     }
-    expect(seen).toEqual(new Set(['none', 'golden', 'cursed', 'swarm']));
+    expect(shrineFloors).toBeGreaterThan(150);
+    expect(seen).toEqual(new Set(['none', 'golden', 'swarm']));
   });
 });
 

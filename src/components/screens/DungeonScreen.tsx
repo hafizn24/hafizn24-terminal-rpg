@@ -5,7 +5,7 @@ import { Button } from '../ui/Button';
 import { Panel } from '../ui/Panel';
 import { LogPanel } from '../terminal/LogPanel';
 import { TutorialOverlay } from '../ui/TutorialOverlay';
-import { FINAL_FLOOR, generateDungeon, getAdjacentRooms, getDailyModifier, isBossFloor } from '../../game/systems/dungeonGenerator';
+import { FINAL_FLOOR, generateDungeon, getAdjacentRooms, isBossFloor } from '../../game/systems/dungeonGenerator';
 import { calcDodgeChance } from '../../utils/rng';
 import { playSfx } from '../../utils/audio';
 import { vibrate } from '../../utils/haptics';
@@ -20,7 +20,6 @@ import type { FloorAffix, FloorModifier, Room } from '../../types/game';
 const MODIFIER_LABEL: Record<FloorModifier, string> = {
   none: '',
   golden: ' · GOLDEN',
-  cursed: ' · CURSED',
   swarm: ' · SWARM',
 };
 
@@ -71,13 +70,6 @@ function floorRng(floor: number) {
   return seed === null || seed === undefined ? undefined : rngForFloor(seed, floor);
 }
 
-/** Forced daily modifier for the current run, if any. */
-function dailyForcedModifier(): FloorModifier | undefined {
-  const key = useGameStore.getState().dailyKey;
-  if (!key) return undefined;
-  return getDailyModifier(key) ?? undefined;
-}
-
 export function DungeonScreen() {
   const player = useGameStore((s) => s.player);
   const dungeon = useGameStore((s) => s.dungeon);
@@ -94,7 +86,7 @@ export function DungeonScreen() {
 
   useEffect(() => {
     if (!dungeon && player) {
-      const newDungeon = generateDungeon(player.floor, floorRng(player.floor), dailyForcedModifier());
+      const newDungeon = generateDungeon(player.floor, floorRng(player.floor));
       // Scout the rooms adjacent to the entrance so the map opens with
       // actionable information instead of a wall of '?'.
       for (const row of newDungeon.rooms) {
@@ -156,7 +148,8 @@ export function DungeonScreen() {
       case 'treasure': {
         if (room.item) {
           playSfx('treasure');
-          addLog(`Found: ${room.item.name}!`, 'loot');
+          vibrate(15);
+          addLog(`Vault opened: ${room.item.name}!`, 'loot');
           useGameStore.getState().addItem(room.item.id, 1);
           // Loot the chest so re-entering doesn't farm infinite items.
           clearRoomAt(room.x, room.y, { item: undefined });
@@ -169,7 +162,7 @@ export function DungeonScreen() {
         // The key type finally has a job: one key, one vault, epic-tier loot.
         const keySlot = p.inventory.find((sl) => sl.item.id === 'dungeon_key' && sl.quantity > 0);
         if (!keySlot) {
-          addLog('A sealed vault. It needs a dungeon key (elites, chests, shops).', 'info');
+          addLog('A sealed vault. It needs a dungeon key (elites, chests).', 'info');
           break;
         }
         const newInv = p.inventory
@@ -206,17 +199,6 @@ export function DungeonScreen() {
         clearRoomAt(room.x, room.y, { trapDamage: undefined });
         if (dodged) {
           addLog('Trap dodged! You slip past the pressure plate. (Disarmed.)', 'combat');
-          try {
-            const k = 'terminal_rpg_trap_dodges';
-            const n = (Number(localStorage.getItem(k)) || 0) + 1;
-            localStorage.setItem(k, String(n));
-            if (n >= 5 && useMetaStore.getState().unlockAchievement('trap_dodger')) {
-              addLog('Feat unlocked: Lightfoot!', 'loot');
-              playSfx('achievement');
-            }
-          } catch {
-            /* cosmetic */
-          }
           break;
         }
         const wardMult = getRelicMods(p.relics ?? []).trapMult;
@@ -231,11 +213,6 @@ export function DungeonScreen() {
       }
       case 'stairs':
         addLog('Found the stairs! Press E or >> Descend to go deeper.', 'system');
-        break;
-      case 'shop':
-        addLog('A mysterious merchant appears!', 'info');
-        useGameStore.getState().setSelectedShop('potion_shop', 'dungeon');
-        useGameStore.getState().setScreen('shop');
         break;
       case 'boss':
         if (room.enemy) {
@@ -304,7 +281,7 @@ export function DungeonScreen() {
     const nextFloor = p.floor + 1;
     playSfx('click');
     updatePlayer({ floor: nextFloor });
-    const newDungeon = generateDungeon(nextFloor, floorRng(nextFloor), dailyForcedModifier());
+    const newDungeon = generateDungeon(nextFloor, floorRng(nextFloor));
     setDungeon(newDungeon);
     useGameStore.getState().recordRunFloor(nextFloor);
     try {
@@ -327,8 +304,6 @@ export function DungeonScreen() {
       const nextCheckpoint = Math.ceil(nextFloor / 5) * 5;
       addLog(`Descended to floor ${nextFloor}. Unsaved — reach floor ${nextCheckpoint} to save.`, 'system');
     }
-    const st = useGameStore.getState();
-    st.updateQuestProgress('floor', 'any', nextFloor);
     useGameStore.setState((s) => ({
       stats: { ...s.stats, bestFloor: Math.max(s.stats.bestFloor, nextFloor) },
     }));
@@ -389,7 +364,6 @@ export function DungeonScreen() {
       case 'shrine': return '+';
       case 'treasure': return '●';
       case 'trap': return '×';
-      case 'shop': return '$';
       case 'stairs': return '▼';
       case 'boss': return '▲';
       case 'start': return '·';
@@ -415,7 +389,6 @@ export function DungeonScreen() {
       case 'shrine': return `${base}text-terminal-cyan border-terminal-cyan/50 font-bold`;
       case 'treasure': return `${base}text-terminal-yellow border-terminal-yellow/40 font-bold`;
       case 'trap': return `${base}text-terminal-red/70 border-terminal-red/30 line-through`;
-      case 'shop': return `${base}text-terminal-green border-terminal-green/50 font-bold`;
       case 'stairs': return `${base}text-terminal-cyan border-terminal-cyan font-bold shadow-[0_0_6px_rgba(0,255,255,0.25)]`;
       case 'boss': return 'bg-terminal-red/10 text-terminal-red border-terminal-red font-bold shadow-[0_0_8px_rgba(255,0,64,0.3)]';
       case 'wall': return 'bg-terminal-bg text-terminal-dim/40 border-terminal-dim/20 cursor-default';
@@ -433,7 +406,6 @@ export function DungeonScreen() {
       case 'treasure': return room.item ? `Treasure: ${room.item.name}` : 'Looted.';
       case 'trap': return room.trapDamage ? 'Trap!' : 'Disarmed.';
       case 'shrine': return 'Shrine — +30% HP/MP.';
-      case 'shop': return 'Merchant.';
       case 'stairs': return 'Stairs — E to descend.';
       case 'start': return 'Entrance.';
       case 'wall': return 'Collapsed rock — impassable.';

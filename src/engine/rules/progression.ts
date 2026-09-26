@@ -75,7 +75,7 @@ export interface StatPointResult {
   spent: boolean;
 }
 
-/** Pure single-point allocation. Returns unspent stats when `stat` is unknown. */
+/** Pure single-point allocation. DEF is earned (growth/gear/enchant), not bought. */
 export function applyStatPointToStats(stats: Stats, stat: StatType): StatPointResult {
   const next = { ...stats };
   switch (stat) {
@@ -95,9 +95,6 @@ export function applyStatPointToStats(stats: Stats, stat: StatType): StatPointRe
     case 'mp':
       next.maxMp += MP_PER_STAT_POINT;
       next.mp = Math.min(next.maxMp, next.mp + MP_PER_STAT_POINT);
-      break;
-    case 'def':
-      next.def += 1;
       break;
     default:
       return { stats, spent: false };

@@ -7,12 +7,12 @@ import type { StatType } from '../../types/game';
 
 const ROWS: { id: StatType; label: string; hint: string }[] = [
   { id: 'str', label: 'STR', hint: '+1 attack (Warrior)' },
-  { id: 'dex', label: 'DEX', hint: '+crit/dodge (+1 atk Rogue)' },
+  { id: 'dex', label: 'DEX', hint: '+crit/dodge (+1 atk Rogue/Ranger)' },
   { id: 'int', label: 'INT', hint: '+skill dmg (+1 atk Mage/Cleric)' },
   { id: 'hp', label: 'HP', hint: `+${HP_PER_STAT_POINT} max` },
   { id: 'mp', label: 'MP', hint: `+${MP_PER_STAT_POINT} max` },
-  { id: 'def', label: 'DEF', hint: '+1 defense' },
 ];
+// DEF is earned, not bought: class growth per level + gear + Smithy enchants.
 
 export function StatAllocationPanel() {
   const player = useGameStore((s) => s.player);
@@ -24,7 +24,11 @@ export function StatAllocationPanel() {
 
   const points = player.statPoints ?? 0;
   const primary: 'str' | 'dex' | 'int' =
-    player.class === 'rogue' ? 'dex' : player.class === 'mage' || player.class === 'cleric' ? 'int' : 'str';
+    player.class === 'rogue' || player.class === 'ranger'
+      ? 'dex'
+      : player.class === 'mage' || player.class === 'cleric'
+        ? 'int'
+        : 'str';
   const gearOffense =
     (player.equipment.weapon?.statBonus?.str || 0) +
     (player.equipment.weapon?.statBonus?.dex || 0) +

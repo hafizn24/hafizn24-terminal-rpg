@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyAffix, getDailyModifier, rollAffix } from '../../game/systems/dungeonGenerator';
+import { applyAffix, rollAffix } from '../../game/systems/dungeonGenerator';
 import { ENEMIES } from '../../game/data/enemies';
 import { getRelicMods } from './relics';
 
@@ -24,18 +24,6 @@ describe('endless affixes', () => {
     expect(applyAffix(base, 'vampiric').stats.hp).toBeGreaterThan(base.stats.hp);
     expect(applyAffix(base, 'arcane').attack).toBeGreaterThan(base.attack);
     expect(applyAffix(base, 'ironclad').defense).toBeGreaterThan(base.defense);
-  });
-});
-
-describe('daily modifier', () => {
-  it('is deterministic per key', () => {
-    expect(getDailyModifier('2026-09-26')).toBe(getDailyModifier('2026-09-26'));
-  });
-
-  it('returns a valid modifier or null', () => {
-    for (const day of ['2026-01-01', '2026-06-15', '2026-12-31']) {
-      expect(['swarm', 'golden', 'cursed', null]).toContain(getDailyModifier(day));
-    }
   });
 });
 

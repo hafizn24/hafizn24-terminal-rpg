@@ -1,9 +1,8 @@
 import { create } from 'zustand';
-import type { Player, DungeonState, Quest, Screen, GameStats, RunStats, RunSummary, StatType } from '../../types/game';
+import type { Player, DungeonState, Screen, GameStats, RunStats, RunSummary, StatType } from '../../types/game';
 import { saveGame, loadGame, hasSaveData, deleteSave, DEFAULT_STATS } from '../../utils/storage';
 import { CLASSES } from '../../game/data/classes';
 import { ITEMS } from '../../game/data/items';
-import { checkQuestProgress, isQuestComplete } from '../../game/systems/questSystem';
 import {
   CHECKPOINT_INTERVAL,
   FINAL_FLOOR,
@@ -18,8 +17,6 @@ import { classifyDeath, recordTelemetryEvent } from '../../utils/telemetry';
 import { useMetaStore } from './metaStore';
 
 export type ShopType = 'blacksmith' | 'potion_shop' | 'magic_shop' | 'smithy';
-export type ShopReturn = 'town' | 'dungeon';
-export type StatsReturn = 'town' | 'inventory' | 'dungeon';
 
 /** Re-exported so screens have one import for checkpoint rules. Boss = save point. */
 export { CHECKPOINT_INTERVAL, isBossFloor as isCheckpointFloor };
@@ -34,12 +31,9 @@ interface GameStore {
   currentScreen: Screen;
   player: Player | null;
   dungeon: DungeonState | null;
-  quests: Quest[];
   gameOverMessage: string;
   hasSave: boolean;
   selectedShop: ShopType;
-  shopReturn: ShopReturn;
-  statsReturn: StatsReturn;
   lastSave: string;
   stats: GameStats;
   /** Seed for deterministic dungeon generation (null = legacy unseeded save). */
@@ -54,12 +48,10 @@ interface GameStore {
   gameWon: boolean;
 
   setScreen: (screen: Screen) => void;
-  setSelectedShop: (shop: ShopType, ret?: ShopReturn) => void;
-  setStatsReturn: (ret: StatsReturn) => void;
+  setSelectedShop: (shop: ShopType) => void;
   createPlayer: (name: string, classId: string) => void;
   updatePlayer: (updates: Partial<Player>) => void;
   setDungeon: (dungeon: DungeonState | null) => void;
-  setQuests: (quests: Quest[]) => void;
   setGameOver: (message: string) => void;
   save: () => boolean;
   load: () => boolean;
@@ -67,7 +59,6 @@ interface GameStore {
   /** Reset into class-select for a daily challenge on `dateKey` (YYYY-MM-DD). */
   startDaily: (dateKey: string) => void;
   checkSave: () => void;
-  updateQuestProgress: (eventType: string, target: string, value?: number) => void;
   addItem: (itemId: string, quantity?: number) => void;
   gainExp: (amount: number) => string[];
   allocateStatPoint: (stat: StatType) => boolean;
@@ -102,12 +93,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   currentScreen: 'title',
   player: null,
   dungeon: null,
-  quests: [],
   gameOverMessage: '',
   hasSave: false,
   selectedShop: 'blacksmith' as ShopType,
-  shopReturn: 'town' as ShopReturn,
-  statsReturn: 'town' as StatsReturn,
   lastSave: '',
   stats: { ...DEFAULT_STATS },
   runSeed: null,
@@ -118,10 +106,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   setScreen: (screen) => set({ currentScreen: screen }),
 
-  setSelectedShop: (shop, ret) =>
-    set((s) => ({ selectedShop: shop, shopReturn: ret ?? s.shopReturn })),
-
-  setStatsReturn: (ret) => set({ statsReturn: ret }),
+  setSelectedShop: (shop) => set({ selectedShop: shop }),
 
   createPlayer: (name, classId) => {
     const classDef = CLASSES.find((c) => c.id === classId);
@@ -166,18 +151,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     set({ player, stats, currentScreen: 'town', runSeed, run: freshRunStats(), gameWon: false, lastSummary: null });
     recordTelemetryEvent({ t: 'runStarted', classId: player.class });
-    try {
-      if (classDef.id === 'ranger') useMetaStore.getState().unlockAchievement('ranger');
-    } catch {
-      /* cosmetic */
-    }
 
     // Persist to localStorage immediately so refresh preserves the save
     const success = saveGame({
       version: 1,
       player,
       dungeon: null,
-      quests: [],
       lastSave: new Date().toISOString(),
       stats,
       runSeed,
@@ -193,8 +172,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   setDungeon: (dungeon) => set({ dungeon }),
-
-  setQuests: (quests) => set({ quests }),
 
   setGameOver: (message) => {
     const { player, run, dailyKey } = get();
@@ -242,14 +219,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   save: () => {
-    const { player, dungeon, quests, stats, runSeed, dailyKey } = get();
+    const { player, dungeon, stats, runSeed, dailyKey } = get();
     if (!player) return false;
     // Persist the active floor map for the whole run so re-entering a floor
     // resumes the same cleared rooms instead of rerolling fresh loot.
     // Checkpoints (boss floors) still mark committed progress; fleeing keeps
     // the in-memory map and this save preserves it across reloads.
     const lastSave = new Date().toISOString();
-    const success = saveGame({ version: 1, player, dungeon, quests, lastSave, stats, runSeed, dailyKey });
+    const success = saveGame({ version: 1, player, dungeon, lastSave, stats, runSeed, dailyKey });
     if (success) set({ hasSave: true, lastSave });
     return success;
   },
@@ -262,7 +239,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({
       player: data.player,
       dungeon: data.dungeon,
-      quests: data.quests || [],
       currentScreen: data.dungeon ? 'dungeon' : 'town',
       hasSave: true,
       lastSave: data.lastSave,
@@ -281,13 +257,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set((s) => ({
       player: null,
       dungeon: null,
-      quests: [],
       currentScreen: 'classSelect',
       gameOverMessage: '',
       hasSave: false,
       selectedShop: 'blacksmith',
-      shopReturn: 'town' as ShopReturn,
-      statsReturn: 'town' as StatsReturn,
       lastSave: '',
       stats: s.stats,
       runSeed: null,
@@ -302,13 +275,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set((s) => ({
       player: null,
       dungeon: null,
-      quests: [],
       currentScreen: 'classSelect',
       gameOverMessage: '',
       hasSave: false,
       selectedShop: 'blacksmith',
-      shopReturn: 'town' as ShopReturn,
-      statsReturn: 'town' as StatsReturn,
       lastSave: '',
       stats: s.stats,
       runSeed: null,
@@ -322,25 +292,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ hasSave: hasSaveData() });
     const data = loadGame();
     if (data) set({ lastSave: data.lastSave, stats: data.stats });
-  },
-
-  updateQuestProgress: (eventType, target, value) => {
-    const { quests, player } = get();
-    const updated = quests.map((q) => {
-      if (q.completed) return q;
-      if (!checkQuestProgress(q, eventType, target)) return q;
-      let newProgress: number;
-      if (q.objective.type === 'floor') {
-        newProgress = Math.max(q.progress, value ?? player?.floor ?? 0);
-      } else if (q.objective.type === 'gold') {
-        newProgress = Math.max(q.progress, value ?? player?.gold ?? 0);
-      } else {
-        newProgress = q.progress + 1;
-      }
-      const completed = isQuestComplete({ ...q, progress: newProgress });
-      return { ...q, progress: newProgress, completed };
-    });
-    set({ quests: updated });
   },
 
   addItem: (itemId, quantity = 1) => {
@@ -509,7 +460,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
     get().save();
     try {
       useMetaStore.getState().unlockAchievement?.('enchanter');
-      if (level + 1 >= MAX_ENCHANT_LEVEL) useMetaStore.getState().unlockAchievement?.('max_enchant');
     } catch {
       /* meta optional in tests */
     }
