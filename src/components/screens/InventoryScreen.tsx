@@ -5,10 +5,12 @@ import { Button } from '../ui/Button';
 import { Panel } from '../ui/Panel';
 import { StatAllocationPanel } from '../ui/StatAllocationPanel';
 import { getRarityColor } from '../../utils/rng';
+import { compareGear, formatGearDelta } from '../../engine/rules/gear';
+import { getEnchantLevel } from '../../engine/rules/enchant';
 
 type Tab = 'all' | 'equipment' | 'consumables' | 'misc' | 'stats';
 
-const ACCESSORY_IDS = new Set(['lucky_charm', 'iron_ring', 'sage_amulet']);
+const ACCESSORY_IDS = new Set(['lucky_charm', 'iron_ring', 'sage_amulet', 'ranger_cloak', 'void_ward']);
 
 export function InventoryScreen() {
   const { player, updatePlayer, setScreen } = useGameStore();
@@ -175,6 +177,10 @@ export function InventoryScreen() {
                     player.equipment.weapon?.id === slot.item.id ||
                     player.equipment.armor?.id === slot.item.id ||
                     player.equipment.accessory?.id === slot.item.id;
+                  const delta = (slot.item.type === 'weapon' || slot.item.type === 'armor') && !isEquipped
+                    ? compareGear(player, slot.item)
+                    : null;
+                  const ench = getEnchantLevel(slot.instanceData);
                   return (
                   <div
                     key={slot.item.id}
@@ -185,6 +191,7 @@ export function InventoryScreen() {
                         <span style={{ color: getRarityColor(slot.item.rarity) }}>
                           {slot.item.name}
                         </span>
+                        {ench > 0 && <span className="text-terminal-cyan text-[11px]">+{ench}</span>}
                         {slot.quantity > 1 && (
                           <span className="text-terminal-yellow text-xs">x{slot.quantity}</span>
                         )}
@@ -193,6 +200,9 @@ export function InventoryScreen() {
                         )}
                       </div>
                       <div className="text-terminal-dim text-[10px]">{slot.item.description}</div>
+                      {delta && (
+                        <div className="text-terminal-cyan text-[10px]">{formatGearDelta(delta)}</div>
+                      )}
                     </div>
                     <div className="flex gap-1 ml-2">
                       {(slot.item.type === 'weapon' || slot.item.type === 'armor') && (

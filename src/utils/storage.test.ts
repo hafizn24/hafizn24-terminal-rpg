@@ -119,8 +119,20 @@ describe('save system', () => {
       playerPos: { x: 0, y: 0 },
       gridSize: 5,
       modifier: undefined as never,
+      affix: undefined as never,
     };
     saveGame(withDungeon);
     expect(loadGame()!.dungeon?.modifier).toBe('none');
+    expect(loadGame()!.dungeon?.affix).toBe('none');
+  });
+
+  it('round-trips enchant instanceData', () => {
+    const s = baseSave();
+    s.player.inventory = [
+      { item: ITEMS['iron_sword'], quantity: 1, instanceData: { enchantLevel: 3 } },
+    ];
+    expect(saveGame(s)).toBe(true);
+    const loaded = loadGame()!;
+    expect(loaded.player.inventory[0].instanceData?.enchantLevel).toBe(3);
   });
 });

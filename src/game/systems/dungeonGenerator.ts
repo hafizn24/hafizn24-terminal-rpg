@@ -1,4 +1,4 @@
-import type { FloorModifier, Room, RoomType, DungeonState, Enemy, Item } from '../../types/game';
+import type { FloorAffix, FloorModifier, Room, RoomType, DungeonState, Enemy, Item } from '../../types/game';
 import { ENEMIES, BOSS_ENEMIES } from '../data/enemies';
 import { ITEMS, SHOP_STOCK } from '../data/items';
 import { randomInt, pickRandom, chance, shuffleArray } from '../../utils/rng';
@@ -44,13 +44,13 @@ export function getShopPity(): number {
  * the same map, which powers daily runs, replays, and balance tests.
  * Without `rng` the legacy Math.random path (with shop pity timer) is used.
  */
-export function generateDungeon(floor: number, rng?: Rng): DungeonState {
+export function generateDungeon(floor: number, rng?: Rng, forcedModifier?: FloorModifier): DungeonState {
   for (let attempt = 0; attempt < 30; attempt++) {
-    const dungeon = attemptFloor(floor, rng, attempt > 20);
+    const dungeon = attemptFloor(floor, rng, attempt > 20, forcedModifier);
     if (dungeon) return dungeon;
   }
   // Practically unreachable: the no-walls fallback always connects.
-  return attemptFloor(floor, rng, true) as DungeonState;
+  return attemptFloor(floor, rng, true, forcedModifier) as DungeonState;
 }
 
 interface Helpers {
@@ -71,7 +71,7 @@ function helpersFor(rng?: Rng): Helpers {
   };
 }
 
-function attemptFloor(floor: number, rng: Rng | undefined, noWalls: boolean): DungeonState | null {
+function attemptFloor(floor: number, rng: Rng | undefined, noWalls: boolean, forcedModifier?: FloorModifier): DungeonState | null {
   const h = helpersFor(rng);
   const n = gridSizeForFloor(floor);
   const rooms: Room[][] = [];
@@ -150,7 +150,11 @@ function attemptFloor(floor: number, rng: Rng | undefined, noWalls: boolean): Du
   }
 
   // Floor modifier: one roll per floor, shown in the header.
-  const modifier = rollModifier(h.roll());
+  // Daily challenge can force one (e.g. swarm day) via `forcedModifier`.
+  const modifier = forcedModifier ?? rollModifier(h.roll());
+
+  // Endless affix: rotating pressure past the seal (floors 31+).
+  const affix = rollAffix(floor, h.roll());
 
   if (modifier === 'swarm') {
     // Extra monsters, extra rewards.
@@ -230,7 +234,19 @@ function attemptFloor(floor: number, rng: Rng | undefined, noWalls: boolean): Du
   if (bossFloor) targets.push(bossPos);
   if (!allReachable(rooms, n, targets)) return null;
 
-  return { floor, rooms, playerPos: { x: 0, y: 0 }, gridSize: n, modifier };
+  // Endless affixes bend enemy stats (applied in scaleEnemyWithAffix).
+  if (affix !== 'none') {
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        const room = rooms[y][x];
+        if (room.enemy && (room.type === 'monster' || room.type === 'elite' || room.type === 'boss')) {
+          room.enemy = applyAffix(room.enemy, affix);
+        }
+      }
+    }
+  }
+
+  return { floor, rooms, playerPos: { x: 0, y: 0 }, gridSize: n, modifier, affix, dailyModifier: forcedModifier ?? null };
 }
 
 function rollModifier(roll: number): FloorModifier {
@@ -238,6 +254,41 @@ function rollModifier(roll: number): FloorModifier {
   if (roll < 0.75) return 'golden';
   if (roll < 0.87) return 'cursed';
   return 'swarm';
+}
+
+/** Endless rotation: vampiric (HP+), arcane (ATK+), ironclad (DEF+) in 5-floor bands. */
+export function rollAffix(floor: number, roll: number): FloorAffix {
+  if (floor <= FINAL_FLOOR) return 'none';
+  const band = Math.floor((floor - FINAL_FLOOR - 1) / 5) % 3;
+  if (band === 0) return roll < 0.7 ? 'vampiric' : 'none';
+  if (band === 1) return roll < 0.7 ? 'arcane' : 'none';
+  return roll < 0.7 ? 'ironclad' : 'none';
+}
+
+/** Pure affix application — exported for tests/sim. */
+export function applyAffix(enemy: Enemy, affix: FloorAffix): Enemy {
+  if (affix === 'none') return enemy;
+  if (affix === 'vampiric') {
+    const hp = Math.floor(enemy.stats.hp * 1.25);
+    return { ...enemy, stats: { ...enemy.stats, hp, maxHp: Math.floor(enemy.stats.maxHp * 1.25) } };
+  }
+  if (affix === 'arcane') {
+    return { ...enemy, attack: Math.floor(enemy.attack * 1.15) };
+  }
+  // ironclad
+  return { ...enemy, defense: Math.floor(enemy.defense * 1.3) + 2 };
+}
+
+/** Daily forced modifier: deterministic per calendar day (swarm/cursed/golden rotation). */
+export function getDailyModifier(dateKey: string): FloorModifier | null {
+  if (!dateKey) return null;
+  let h = 0;
+  for (let i = 0; i < dateKey.length; i++) h = (Math.imul(h, 31) + dateKey.charCodeAt(i)) | 0;
+  const r = Math.abs(h) % 7;
+  if (r === 0) return 'swarm';
+  if (r === 1) return 'golden';
+  if (r === 2) return 'cursed';
+  return null;
 }
 
 /** BFS over non-wall cells from (0,0). Exported for tests. */

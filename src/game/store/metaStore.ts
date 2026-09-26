@@ -8,6 +8,7 @@ interface MetaStore {
   upgrades: Record<string, number>;
   kills: Record<string, number>;
   endlessUnlocked: boolean;
+  achievements: string[];
   /** Last write per screen mount — lets UI refresh without subscriptions. */
   updatedAt: number;
 
@@ -18,6 +19,8 @@ interface MetaStore {
   unlockEndless: () => void;
   recordDaily: (dateKey: string, entry: DailyEntry) => DailyEntry[];
   getDailyBoard: (dateKey: string) => DailyEntry[];
+  unlockAchievement: (id: string) => boolean;
+  hasAchievement: (id: string) => boolean;
 }
 
 function persist(s: MetaState): void {
@@ -25,7 +28,7 @@ function persist(s: MetaState): void {
 }
 
 function snapshot(s: MetaStore): MetaState {
-  return { shards: s.shards, upgrades: s.upgrades, kills: s.kills, endlessUnlocked: s.endlessUnlocked };
+  return { shards: s.shards, upgrades: s.upgrades, kills: s.kills, endlessUnlocked: s.endlessUnlocked, achievements: s.achievements };
 }
 
 export const useMetaStore = create<MetaStore>((set, get) => ({
@@ -33,11 +36,12 @@ export const useMetaStore = create<MetaStore>((set, get) => ({
   upgrades: {},
   kills: {},
   endlessUnlocked: false,
+  achievements: [],
   updatedAt: 0,
 
   refresh: () => {
     const m = loadMeta();
-    set({ shards: m.shards, upgrades: m.upgrades, kills: m.kills, endlessUnlocked: m.endlessUnlocked, updatedAt: Date.now() });
+    set({ shards: m.shards, upgrades: m.upgrades, kills: m.kills, endlessUnlocked: m.endlessUnlocked, achievements: m.achievements ?? [], updatedAt: Date.now() });
   },
 
   earnShards: (amount) => {
@@ -79,4 +83,15 @@ export const useMetaStore = create<MetaStore>((set, get) => ({
   recordDaily: (dateKey, entry) => recordDailyEntry(dateKey, entry),
 
   getDailyBoard: (dateKey) => loadDailyBoard(dateKey),
+
+  unlockAchievement: (id) => {
+    const s = get();
+    if (s.achievements.includes(id)) return false;
+    const achievements = [...s.achievements, id];
+    set({ achievements, updatedAt: Date.now() });
+    persist({ ...snapshot(s), achievements });
+    return true;
+  },
+
+  hasAchievement: (id) => get().achievements.includes(id),
 }));

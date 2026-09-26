@@ -240,7 +240,7 @@ export function summarize(results: RunResult[]): ClassSummary {
 
 export function runBalanceSuite(opts: SimOptions = {}): ClassSummary[] {
   const { runsPerClass = 250, baseSeed = 12345, maxFloor = 30, startPotions = 3, potionHeal = 30 } = opts;
-  const classes: CharacterClass[] = ['warrior', 'rogue', 'mage', 'cleric'];
+  const classes: CharacterClass[] = ['warrior', 'rogue', 'mage', 'cleric', 'ranger'];
   return classes.map((cls) => {
     const results: RunResult[] = [];
     for (let i = 0; i < runsPerClass; i++) {

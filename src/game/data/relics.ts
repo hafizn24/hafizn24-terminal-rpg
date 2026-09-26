@@ -18,6 +18,10 @@ export const RELICS: RelicDefinition[] = [
   { id: 'lucky_coin', name: 'Lucky Coin', description: '+25% gold from victories.' },
   { id: 'iron_hide', name: 'Iron Hide', description: '+4 defense.' },
   { id: 'adrenaline', name: 'Adrenaline', description: '+25% skill damage while below 30% HP.' },
+  { id: 'vampiric_fang', name: 'Vampiric Fang', description: 'Heal 4 HP after every victory + 10% skill lifesteal echo.' },
+  { id: 'phoenix_feather', name: 'Phoenix Feather', description: '+12% dodge while below half HP, +5 heal on victory.' },
+  { id: 'sage_stone', name: 'Sage Stone', description: 'Skills cost 2 less MP and +10% skill damage.' },
+  { id: 'titan_plate', name: 'Titan Plate', description: '+6 defense, traps deal 25% less.' },
 ];
 
 export function getRelic(id: string): RelicDefinition | undefined {

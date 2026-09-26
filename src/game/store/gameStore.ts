@@ -12,11 +12,12 @@ import {
 } from '../../game/systems/dungeonGenerator';
 import { applyStatPointToStats, planLevelUps } from '../../engine/rules/progression';
 import { getDailySeedForKey, randomSeed, rngForFloor } from '../../engine/rng';
+import { canEnchantType, enchantCost, getEnchantLevel, MAX_ENCHANT_LEVEL } from '../../engine/rules/enchant';
 import { shardsForRun } from '../data/meta';
 import { classifyDeath, recordTelemetryEvent } from '../../utils/telemetry';
 import { useMetaStore } from './metaStore';
 
-export type ShopType = 'blacksmith' | 'potion_shop' | 'magic_shop';
+export type ShopType = 'blacksmith' | 'potion_shop' | 'magic_shop' | 'smithy';
 export type ShopReturn = 'town' | 'dungeon';
 export type StatsReturn = 'town' | 'inventory' | 'dungeon';
 
@@ -78,6 +79,8 @@ interface GameStore {
   completeEnding: () => void;
   /** Break the seal: descend to floor 31+ with the same hero. */
   continueEndless: () => void;
+  /** Smithy: enchant gear +1 (max +5). Returns message for the log. */
+  enchantItem: (itemId: string) => { ok: boolean; message: string };
 }
 
 /** Re-exported from the engine so UI has one import for point economics. */
@@ -163,6 +166,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     set({ player, stats, currentScreen: 'town', runSeed, run: freshRunStats(), gameWon: false, lastSummary: null });
     recordTelemetryEvent({ t: 'runStarted', classId: player.class });
+    try {
+      if (classDef.id === 'ranger') useMetaStore.getState().unlockAchievement('ranger');
+    } catch {
+      /* cosmetic */
+    }
 
     // Persist to localStorage immediately so refresh preserves the save
     const success = saveGame({
@@ -479,5 +487,32 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
     get().recordRunFloor(nextFloor);
     get().save();
+  },
+
+  enchantItem: (itemId) => {
+    const { player } = get();
+    if (!player) return { ok: false, message: 'No hero.' };
+    const idx = player.inventory.findIndex((s) => s.item.id === itemId);
+    if (idx < 0) return { ok: false, message: 'Not in inventory.' };
+    const slot = player.inventory[idx];
+    if (!canEnchantType(slot.item.type)) return { ok: false, message: 'Only weapons & armor.' };
+    const level = getEnchantLevel(slot.instanceData);
+    if (level >= MAX_ENCHANT_LEVEL) return { ok: false, message: 'Already +5 (max).' };
+    const cost = enchantCost(level);
+    if (player.gold < cost) return { ok: false, message: `Need ${cost}g.` };
+    const inventory = player.inventory.map((s, i) =>
+      i === idx ? { ...s, instanceData: { ...(s.instanceData ?? {}), enchantLevel: level + 1 } } : s,
+    );
+    // If the enchanted piece is equipped, the live Equipment ref stays the
+    // same catalogue item — bonuses resolve via instanceData at read time.
+    set({ player: { ...player, gold: player.gold - cost, inventory } });
+    get().save();
+    try {
+      useMetaStore.getState().unlockAchievement?.('enchanter');
+      if (level + 1 >= MAX_ENCHANT_LEVEL) useMetaStore.getState().unlockAchievement?.('max_enchant');
+    } catch {
+      /* meta optional in tests */
+    }
+    return { ok: true, message: `${slot.item.name} +${level + 1}! (-${cost}g)` };
   },
 }));

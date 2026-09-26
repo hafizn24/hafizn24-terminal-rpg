@@ -1,4 +1,4 @@
-export type CharacterClass = 'warrior' | 'mage' | 'rogue' | 'cleric';
+export type CharacterClass = 'warrior' | 'mage' | 'rogue' | 'cleric' | 'ranger';
 
 export type Screen =
   | 'title'
@@ -14,7 +14,9 @@ export type Screen =
   | 'meta'
   | 'bestiary'
   | 'relicDraft'
-  | 'ending';
+  | 'ending'
+  | 'smithy'
+  | 'achievements';
 
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic';
 
@@ -37,6 +39,9 @@ export type RoomType =
 /** One rolled floor modifier — variance per line of code. Shown in the header. */
 export type FloorModifier = 'none' | 'golden' | 'cursed' | 'swarm';
 
+/** Endless affix (floors 31+): rotating pressure beyond the seal. */
+export type FloorAffix = 'none' | 'vampiric' | 'arcane' | 'ironclad';
+
 /** Combat skill roles: damage vs. setup/payoff utility (never just a bigger number). */
 export type SkillKind =
   | 'strike'
@@ -47,7 +52,8 @@ export type SkillKind =
   | 'weaken'
   | 'critNext'
   | 'evade'
-  | 'cleanse';
+  | 'cleanse'
+  | 'ultimate';
 
 export type StatType = 'str' | 'dex' | 'int' | 'hp' | 'mp' | 'def';
 
@@ -81,7 +87,7 @@ export interface ClassDefinition {
   ascii: string;
   baseStats: Stats;
   growth: Record<StatType, number>;
-  /** Three skills per class, unlocked at levels 1 / 4 / 8. skills[0] is the opener. */
+  /** Four skills per class, unlocked at levels 1 / 4 / 8 / 12. skills[0] is the opener. */
   skills: ClassSkill[];
 }
 
@@ -191,6 +197,10 @@ export interface DungeonState {
   /** Grows with depth: 5 (floors 1-10), 6 (11-20), 7 (21+). */
   gridSize: number;
   modifier: FloorModifier;
+  /** Endless pressure affix (floors 31+). Defaults to 'none'. */
+  affix: FloorAffix;
+  /** Forced daily modifier label (e.g. daily swarm day), if any. */
+  dailyModifier?: FloorModifier | null;
 }
 
 export interface Quest {
@@ -246,6 +256,8 @@ export interface MetaState {
   kills: Record<string, number>;
   /** Set by beating floor 30. Unlocks endless descent past the seal. */
   endlessUnlocked: boolean;
+  /** Unlocked achievement ids (local, earned through play). */
+  achievements?: string[];
 }
 
 export interface DailyEntry {

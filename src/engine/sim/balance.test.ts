@@ -32,6 +32,7 @@ describe('damage rules', () => {
   it('scales basic attack off the class primary stat', () => {
     expect(getPrimaryStatForClass('warrior')).toBe('str');
     expect(getPrimaryStatForClass('rogue')).toBe('dex');
+    expect(getPrimaryStatForClass('ranger')).toBe('dex');
     expect(getPrimaryStatForClass('mage')).toBe('int');
     expect(getPrimaryStatForClass('cleric')).toBe('int');
     // A mage with 0 STR still hits via INT (the old STR-only formula returned ~6).
@@ -129,13 +130,14 @@ describe('seeded rng + generation', () => {
 });
 
 describe('class skills', () => {
-  it('gives every class 3 skills unlocked at 1/4/8', () => {
+  it('gives every class 4 skills unlocked at 1/4/8/12', () => {
     for (const cls of CLASSES) {
-      expect(cls.skills).toHaveLength(3);
+      expect(cls.skills).toHaveLength(4);
       expect(unlockedSkills(cls.skills, 1)).toHaveLength(1);
       expect(unlockedSkills(cls.skills, 4)).toHaveLength(2);
       expect(unlockedSkills(cls.skills, 8)).toHaveLength(3);
-      expect(unlockedSkills(cls.skills, 30)).toHaveLength(3);
+      expect(unlockedSkills(cls.skills, 12)).toHaveLength(4);
+      expect(unlockedSkills(cls.skills, 30)).toHaveLength(4);
     }
   });
 

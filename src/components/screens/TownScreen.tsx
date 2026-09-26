@@ -5,6 +5,8 @@ import { playSfx } from '../../utils/audio';
 import { Button } from '../ui/Button';
 import { Panel } from '../ui/Panel';
 import { SoundToggle } from '../ui/SoundToggle';
+import { TutorialOverlay } from '../ui/TutorialOverlay';
+import { getDailyModifier } from '../../game/systems/dungeonGenerator';
 
 /** Inn price: 15g x level, escalating per consecutive rest without descending. */
 export function getInnCost(level: number, restsThisVisit: number): number {
@@ -81,6 +83,7 @@ export function TownScreen() {
 
   const points = player.statPoints ?? 0;
   const checkpoint = isCheckpointFloor(player.floor);
+  const dailyMod = dailyKey ? getDailyModifier(dailyKey) : null;
 
   return (
     <div className="flex flex-col min-h-[70vh] justify-center gap-5 animate-fade-in max-w-md mx-auto">
@@ -95,9 +98,11 @@ export function TownScreen() {
 
       {dailyKey && (
         <div className="text-center text-[11px] text-terminal-yellow border border-terminal-yellow/40 px-2 py-1">
-          DAILY CHALLENGE — {dailyKey} · one seed, one leaderboard
+          DAILY CHALLENGE — {dailyKey} · one seed, one leaderboard{dailyMod ? ` · ${dailyMod.toUpperCase()} day` : ''}
         </div>
       )}
+
+      <TutorialOverlay where="town" />
 
       <div className="grid grid-cols-2 gap-2 w-full">
         <Button onClick={handleRest}>Inn ({innCost}g)</Button>
@@ -108,6 +113,8 @@ export function TownScreen() {
         <Button onClick={() => setScreen('inventory')}>Inventory</Button>
         <Button onClick={() => setScreen('meta')}>Renown</Button>
         <Button onClick={() => setScreen('bestiary')}>Bestiary</Button>
+        <Button onClick={() => setScreen('smithy')}>Smithy</Button>
+        <Button onClick={() => setScreen('achievements')}>Feats</Button>
       </div>
 
       <Panel title="Shops — resupply here" titleAlign="center">
@@ -120,6 +127,9 @@ export function TownScreen() {
           </Button>
           <Button size="sm" variant="ghost" className="w-full" onClick={() => goShop('magic_shop')}>
             Magic Shop <span className="text-terminal-dim normal-case">— charms & spells</span>
+          </Button>
+          <Button size="sm" variant="ghost" className="w-full" onClick={() => setScreen('smithy')}>
+            Smithy <span className="text-terminal-dim normal-case">— enchant to +5</span>
           </Button>
         </div>
       </Panel>

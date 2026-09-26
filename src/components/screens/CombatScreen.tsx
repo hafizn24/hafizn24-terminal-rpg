@@ -6,6 +6,7 @@ import { Panel } from '../ui/Panel';
 import { ProgressBar } from '../ui/ProgressBar';
 import { calcDamage, calcCritChance, calcDodgeChance, chance, pickRandom } from '../../utils/rng';
 import { playSfx } from '../../utils/audio';
+import { vibrate } from '../../utils/haptics';
 import { recordTelemetryEvent } from '../../utils/telemetry';
 import {
   getPlayerDefTotal,
@@ -20,6 +21,16 @@ import { isFinalFloor } from '../../game/systems/dungeonGenerator';
 import type { ClassSkill, Enemy, EnemySkill } from '../../types/game';
 import { useKeyboard } from '../../hooks/useKeyboard';
 import { useMetaStore } from '../../game/store/metaStore';
+
+/** Text status tags — shape + color, never color alone (color-blind safe). */
+const STATUS_TAG: Record<string, string> = {
+  burn: '[BRN]',
+  poison: '[PSN]',
+};
+
+function statusLabel(id: 'burn' | 'poison'): string {
+  return STATUS_TAG[id] ?? `[${id.toUpperCase()}]`;
+}
 
 /** Short-lived combat buffs: setup now, payoff later (the rotation). */
 interface PlayerBuffs {
@@ -442,8 +453,9 @@ export function CombatScreen() {
       dex: (p.equipment.weapon?.statBonus?.dex || 0) + (p.equipment.accessory?.statBonus?.dex || 0),
       int: (p.equipment.weapon?.statBonus?.int || 0) + (p.equipment.accessory?.statBonus?.int || 0),
     });
-    // Adrenaline: desperate skills hit harder.
+    // Adrenaline: desperate skills hit harder. Sage Stone: flat skill bonus.
     if (p.stats.hp < p.stats.maxHp * 0.3) atk = Math.floor(atk * mods.lowHpSkillMult);
+    atk = Math.floor(atk * (mods.skillMult ?? 1));
     // Rage fuels skills too — setup into payoff.
     const buffs = stateRef.current.playerBuffs;
     if (buffs.atkTurns > 0) atk = Math.floor(atk * buffs.atkMult);
@@ -457,25 +469,42 @@ export function CombatScreen() {
       setTimeout(enemyTurn, 800);
     };
 
-    if (skill.kind === 'strike' || skill.kind === 'nuke' || skill.kind === 'healStrike') {
+    if (skill.kind === 'strike' || skill.kind === 'nuke' || skill.kind === 'healStrike' || skill.kind === 'ultimate') {
       const isSneak = skill.id === 'backstab' && chance(0.25);
-      const base = calcDamage(Math.floor((atk * skill.power) / 2), e.defense);
+      const isUlt = skill.kind === 'ultimate';
+      // Ultimates: cinematic payoff — bonus vs elites/bosses for Kingsbane, burn for Meteor.
+      const eliteBonus = skill.id === 'kingsbane' && (e.isElite || isBossEnemy(e)) ? 1.5 : 1;
+      const shadowCrit = skill.id === 'shadowstep' ? true : false;
+      const baseRoll = calcDamage(Math.floor((atk * skill.power * eliteBonus) / 2), e.defense);
+      const critRoll = shadowCrit || (isUlt && chance(0.3));
+      const base = critRoll && !isSneak ? baseRoll * 2 : baseRoll;
       const dmg = isSneak ? base * 2 : base;
       const newEnemyHp = Math.max(0, s.enemyHp - dmg);
 
       let newStats = { ...spendMp };
-      let logMsg = `${skill.name}! Deals ${dmg} damage!${isSneak ? ' SNEAK BONUS x2!' : ''}`;
+      let logMsg = `${skill.name}! Deals ${dmg} damage!${isSneak ? ' SNEAK BONUS x2!' : ''}${isUlt ? ' ULTIMATE!' : ''}${critRoll ? ' CRIT!' : ''}`;
       if (skill.kind === 'healStrike') {
         const heal = 2 * p.stats.int;
         newStats = { ...newStats, hp: Math.min(newStats.maxHp, newStats.hp + heal) };
         logMsg += ` Healed ${heal} HP.`;
         addDamageNumber(`+${heal}`, '#00ff41', 40, 75);
       }
+      if (skill.id === 'judgment') {
+        // Judgment also purges afflictions.
+        setState((prev) => ({ ...prev, playerStatus: null }));
+        newStats = { ...newStats, hp: Math.min(newStats.maxHp, newStats.hp + p.stats.int) };
+        logMsg += ' Affliction purged.';
+      }
+      if (skill.id === 'meteor') {
+        setState((prev) => ({ ...prev, enemyStatus: { id: 'burn', dmg: 6, turns: 2 } }));
+        logMsg += ' Burn applied.';
+      }
       updatePlayer({ stats: newStats });
 
       addDamageNumber(`-${dmg}`, '#00ffff', 50 + Math.random() * 30, 20 + Math.random() * 20);
       triggerShake();
-      playSfx('skill');
+      vibrate(isUlt ? [20, 30, 20] : 10);
+      playSfx(isUlt ? 'ultimate' : 'skill');
       useGameStore.getState().recordRunDamage(dmg);
 
       setState((prev) => ({
@@ -651,6 +680,17 @@ export function CombatScreen() {
       updatePlayer({ stats: newStats });
       setState((prev) => ({ ...prev, isPlayerTurn: false, combatLog: [...prev.combatLog, logMsg] }));
       addLog(logMsg, 'loot');
+      try {
+        const k = 'terminal_rpg_potions_used';
+        const n = (Number(localStorage.getItem(k)) || 0) + 1;
+        localStorage.setItem(k, String(n));
+        if (n >= 10 && useMetaStore.getState().unlockAchievement('alchemist')) {
+          addLog('Feat unlocked: Alchemist!', 'loot');
+          playSfx('achievement');
+        }
+      } catch {
+        /* cosmetic */
+      }
       setTimeout(enemyTurn, 800);
     },
     [addDamageNumber, addLog, applyStatusTick, checkVictory, consumeOne, enemyTurn, setScreen, triggerShake, updatePlayer]
@@ -777,7 +817,34 @@ export function CombatScreen() {
     }
     // Run telemetry + Bestiary unlock (Elite shares the base enemy id).
     store.recordRunKill(goldGain, isBoss);
-    useMetaStore.getState().recordKill(e.id);
+    const meta = useMetaStore.getState();
+    meta.recordKill(e.id);
+    // Achievements (local, best-effort — never block victory routing).
+    try {
+      const unlock = (id: string, msg: string) => {
+        if (meta.unlockAchievement(id)) {
+          addLog(`Feat unlocked: ${msg}!`, 'loot');
+          playSfx('achievement');
+        }
+      };
+      unlock('first_blood', 'First Blood');
+      if (e.isElite) unlock('elite_hunter', 'Elite Hunter');
+      if (isBoss) {
+        unlock('boss_slayer', 'Boss Slayer');
+        const cur = useGameStore.getState().player;
+        if (cur && cur.stats.hp >= cur.stats.maxHp) unlock('flawless_boss', 'Flawless');
+      }
+      const curP = useGameStore.getState().player;
+      if (curP && curP.gold >= 1000) unlock('gold_1000', 'Hoarder');
+      if (curP && curP.level >= 10) unlock('level_10', 'Veteran');
+      if (curP && curP.level >= 15) unlock('level_15', 'Legend');
+      if (curP && (curP.relics ?? []).length >= 3) unlock('relic_collector', 'Relic Collector');
+      const kills = Object.keys(meta.kills ?? {}).length;
+      if (kills >= 10) unlock('bestiary_10', 'Naturalist');
+      if (useGameStore.getState().dailyKey) unlock('daily', 'Challenger');
+    } catch {
+      /* achievements are cosmetic */
+    }
     if (isBoss) {
       recordTelemetryEvent({ t: 'bossKilled', classId: p.class, floor: dungeonRef.current?.floor ?? 1, boss: e.id });
     }
@@ -798,6 +865,7 @@ export function CombatScreen() {
     const logMsg = `Victory! +${expGain} EXP, +${goldGain} Gold`;
     addLog(logMsg, 'loot');
     playSfx('victory');
+    vibrate(15);
     if (levelMsgs.length > 0) playSfx('levelup');
 
     // Volatile burst: killing it is only half the fight — kill it last, kill
@@ -870,6 +938,7 @@ export function CombatScreen() {
       '2': () => ids[0] && handleSkillId(ids[0]),
       q: () => ids[1] && handleSkillId(ids[1]),
       e: () => ids[2] && handleSkillId(ids[2]),
+      r: () => ids[3] && handleSkillId(ids[3]),
     };
   }, [handleSkillId]);
 
@@ -930,12 +999,15 @@ export function CombatScreen() {
         <ProgressBar current={state.enemyHp} max={state.enemyMaxHp} label="HP" color="red" />
         <div className="mt-1 text-[11px] text-terminal-dim text-center truncate">
           {state.intent ? (
-            <span className="text-terminal-yellow">{state.intent.name} (~{intentMin}-{intentMax})</span>
+            <span className="text-terminal-yellow">
+              {state.intent.status ? `${statusLabel(state.intent.status.id)} ` : ''}
+              {state.intent.name} (~{intentMin}-{intentMax})
+            </span>
           ) : (
             <span>Attack (~{intentMin}-{intentMax})</span>
           )}
           {state.enemyStatus && (
-            <span className="text-terminal-red ml-2">[{state.enemyStatus.id}]</span>
+            <span className="text-terminal-red ml-2">{statusLabel(state.enemyStatus.id)} {state.enemyStatus.turns}t</span>
           )}
         </div>
       </Panel>
@@ -963,7 +1035,7 @@ export function CombatScreen() {
           )}
           {state.guarding && <span className="text-terminal-cyan"> · GUARD</span>}
           {state.playerStatus && (
-            <span className="text-terminal-red"> · [{state.playerStatus.id}]</span>
+            <span className="text-terminal-red"> · {statusLabel(state.playerStatus.id)} {state.playerStatus.turns}t</span>
           )}
         </div>
       </Panel>
@@ -1000,16 +1072,17 @@ export function CombatScreen() {
             const locked = player.level < sk.unlockLevel;
             const cost = skillCost(sk);
             const afford = player.stats.mp >= cost;
-            const key = i === 0 ? '2' : i === 1 ? 'Q' : 'E';
+            const key = i === 0 ? '2' : i === 1 ? 'Q' : i === 2 ? 'E' : 'R';
+            const isUlt = sk.kind === 'ultimate';
             return (
               <Button
                 key={sk.id}
                 onClick={() => handleSkillId(sk.id)}
                 disabled={!state.isPlayerTurn || locked || !afford}
-                variant={locked ? 'ghost' : 'primary'}
+                variant={locked ? 'ghost' : isUlt ? 'danger' : 'primary'}
                 title={sk.description}
               >
-                {locked ? `[Lv${sk.unlockLevel}] ${sk.name}` : `[${key}] ${sk.name} (${cost})`}
+                {locked ? `[Lv${sk.unlockLevel}] ${sk.name}` : `[${key}] ${sk.name} (${cost})${isUlt ? ' ★' : ''}`}
               </Button>
             );
           })}
@@ -1041,6 +1114,9 @@ export function CombatScreen() {
           {latestLog}
           {!state.isPlayerTurn && !state.isOver && ' …'}
         </span>
+      </div>
+      <div className="text-center text-[10px] text-terminal-dim" aria-hidden="true">
+        1 Atk · 2/Q/E/R Skills · 3 Potion · 4 Run · 5/G Guard
       </div>
 
       {state.isOver && (

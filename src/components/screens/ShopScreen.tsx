@@ -7,6 +7,7 @@ import { Panel } from '../ui/Panel';
 import { ITEMS, SHOP_STOCK } from '../../game/data/items';
 import { getRarityColor } from '../../utils/rng';
 import { playSfx } from '../../utils/audio';
+import { compareGear, formatGearDelta } from '../../engine/rules/gear';
 import type { Item } from '../../types/game';
 
 type ShopMode = 'buy' | 'sell';
@@ -15,15 +16,17 @@ const SHOP_NAMES: Record<ShopType, string> = {
   blacksmith: 'Blacksmith',
   potion_shop: 'Potion Shop',
   magic_shop: 'Magic Shop',
+  smithy: 'Smithy',
 };
 
 const SHOP_ICONS: Record<ShopType, string> = {
   blacksmith: 'S',
   potion_shop: 'P',
   magic_shop: 'M',
+  smithy: 'F',
 };
 
-const ACCESSORY_IDS = new Set(['lucky_charm', 'iron_ring', 'sage_amulet']);
+const ACCESSORY_IDS = new Set(['lucky_charm', 'iron_ring', 'sage_amulet', 'ranger_cloak', 'void_ward']);
 
 /** Sell price is 50% of buy price (floor). */
 export function getSellPrice(item: Item): number {
@@ -240,6 +243,17 @@ export function ShopScreen() {
                         ))}
                       </div>
                     )}
+                    {player && (item.type === 'weapon' || item.type === 'armor') && (() => {
+                      const d = compareGear(player, item);
+                      if (!d) return null;
+                      const label = formatGearDelta(d);
+                      const up = d.atkDelta + d.defDelta + d.hpDelta + d.mpDelta > 0;
+                      return (
+                        <div className={`text-[10px] ${up ? 'text-terminal-cyan' : 'text-terminal-dim'}`}>
+                          {up ? '▲ ' : ''}{label}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <Button
                     size="sm"

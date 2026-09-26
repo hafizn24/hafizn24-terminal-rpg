@@ -35,20 +35,21 @@ npm run build
 ### 1. localStorage Persistence (Bug Fix Verification)
 
 - [ ] Open game, click "New Game"
-- [ ] Select a class, enter a name, click "Begin Adventure"
+- [ ] Select a class (5 available: Warrior/Mage/Rogue/Cleric/Ranger), enter a name, click "Begin Adventure"
 - [ ] **Refresh the page** (F5 or Ctrl+R)
 - [ ] **Expected:** Title screen shows "Continue" button (NOT "New Game" only)
 - [ ] Click "Continue" — should load your saved character and go to Town
-- [ ] Open DevTools > Application > Local Storage > check `terminal_rpg_save` exists
+- [ ] Open DevTools > Application > Local Storage > check `terminal_rpg_save` exists (schema `SAVE_VERSION=3`, hash-checked)
 
 ### 2. Dungeon Entry
 
 - [ ] From Town, click "Enter Dungeon"
 - [ ] **Expected:** Game transitions to Dungeon screen, does NOT freeze
-- [ ] You should see "FLOOR 1" and the 5x5 grid map
-- [ ] Click "[Flee]" — returns to Town (map discarded before floor 5)
+- [ ] You should see "FLOOR 1" and the 5x5 grid map (6x6 on floors 11-20, 7x7 on 21+)
+- [ ] Tutorial overlay shows on first visit (dismiss persists `terminal_rpg_tutorial_done`)
+- [ ] Click "[Flee]" — returns to Town (map cached, re-enter resumes)
 - [ ] Click "Enter Dungeon" again
-- [ ] **Expected:** New dungeon generated, no freeze on re-entry
+- [ ] **Expected:** Same cached map resumes, no freeze on re-entry
 
 ### 3. Dungeon Navigation
 
@@ -111,8 +112,21 @@ npm run build
 ### 8. Inn Rest
 
 - [ ] From Town, click "Inn"
-- [ ] **Expected:** HP and MP fully restored
+- [ ] **Expected:** HP and MP fully restored, costs `15 × level` escalating per rest-without-descend
 - [ ] Game saved to localStorage
+
+### 8b. Smithy (Enchanting)
+
+- [ ] From Town, click "Smithy"
+- [ ] **Expected:** Weapon/armor list with enchant levels (+0..+5), cost `100 × 2^level`
+- [ ] Enchant a weapon — ATK preview increases, gold decreases, `instanceData.enchantLevel` persists across reload
+- [ ] Max +5 — button disables at cap
+
+### 8c. Achievements
+
+- [ ] From Town, click "Achievements"
+- [ ] **Expected:** ~20 achievements (first blood, flawless boss, vault raider, etc.), locked shows `???`
+- [ ] Kill 1 enemy — `first_blood` unlocks with toast + SFX
 
 ### 9. Game Over & New Game
 
@@ -139,9 +153,8 @@ npm run build
 
 ## Known Limitations
 
-- No automated browser tests (manual testing required)
-- No unit tests for game logic (add vitest if needed)
-- Sound effects not implemented
+- No automated browser tests — Playwright smoke covers title → town → dungeon → combat victory on `dist/` preview (see `.github/workflows/ci.yml`); manual testing still required for feel
+- WebAudio synth SFX implemented (`src/utils/audio.ts`, 13+ cues, mute persisted as `terminal_rpg_muted`); Google Fonts online-only with monospace fallback
 - localStorage limit ~5MB (plenty for this game)
 
 ## Debugging Tips

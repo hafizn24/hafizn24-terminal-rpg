@@ -29,6 +29,7 @@ export function ClassSelectScreen() {
     mage: '[STAFF]',
     rogue: '[BLADE]',
     cleric: '[SHIELD]',
+    ranger: '[BOW]',
   };
 
   const classColors: Record<string, string> = {
@@ -36,6 +37,7 @@ export function ClassSelectScreen() {
     mage: 'text-terminal-cyan',
     rogue: 'text-terminal-yellow',
     cleric: 'text-terminal-green',
+    ranger: 'text-terminal-green',
   };
 
   return (

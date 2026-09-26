@@ -6,7 +6,7 @@ import { seedFromString } from '../engine/rng';
 const STORAGE_KEY = 'terminal_rpg_save';
 
 /** Current on-disk schema. Bump when the serialized shape changes. */
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export interface SaveData {
   version: number;
@@ -150,12 +150,22 @@ function migratePlayer(raw: Record<string, unknown>, version: number): Serialize
       (p as unknown as { relics: string[] }).relics = [];
     }
   }
+  if (version < 3) {
+    // v2 -> v3: enchant levels ride in instanceData (already round-trips);
+    // ensure the field exists so Smithy never reads undefined.
+    const inv = (p as unknown as { inventory?: SerializedSlot[] }).inventory ?? [];
+    for (const s of inv) {
+      if (s.instanceData && typeof s.instanceData.enchantLevel !== 'number') {
+        s.instanceData.enchantLevel = 0;
+      }
+    }
+  }
   return p;
 }
 
-function migrateDungeon(raw: (DungeonState & { modifier?: DungeonState['modifier'] }) | null): DungeonState | null {
+function migrateDungeon(raw: (DungeonState & { modifier?: DungeonState['modifier']; affix?: DungeonState['affix'] }) | null): DungeonState | null {
   if (!raw) return null;
-  return { ...raw, modifier: raw.modifier ?? 'none' };
+  return { ...raw, modifier: raw.modifier ?? 'none', affix: raw.affix ?? 'none' };
 }
 
 export function saveGame(data: SaveData): boolean {

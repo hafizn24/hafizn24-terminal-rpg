@@ -138,8 +138,8 @@ export function TitleScreen() {
 
       {showButtons && (
         <div className="text-terminal-dim text-xs mt-8 animate-fade-in text-center">
-          <p>Dungeon: WASD/Arrows or tap • Combat: 1 attack, 2/Q/E skills, 3 potion, 5 guard • E descends</p>
-          <p className="mt-1">Rest at the Inn to save. Shrines heal once. Elites drop bonus loot.</p>
+          <p>Dungeon: WASD/Arrows or tap • Combat: 1 attack, 2/Q/E/R skills, 3 potion, 5 guard • E descends</p>
+          <p className="mt-1">Rest at the Inn to save. Forge at the Smithy. Elites drop bonus loot.</p>
           <div className="mt-2 flex justify-center">
             <SoundToggle />
           </div>

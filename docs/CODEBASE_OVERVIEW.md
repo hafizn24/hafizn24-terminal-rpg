@@ -1,8 +1,8 @@
 # CODEBASE_OVERVIEW.md — Read this first (AI agent context)
 
 > Token-efficient map of this repo. Check this file before reading source files.
-> Project: `hafizn24-terminal-rpg` v0.1.0 — terminal-themed browser roguelite RPG.
-> Flow: Title → ClassSelect → Town hub → 5x5 procedural Dungeon → turn-based Combat → descend/boss, checkpoint saves to localStorage.
+> Project: `hafizn24-terminal-rpg` v0.2.0 — terminal-themed browser roguelite RPG.
+> Flow: Title → ClassSelect → Town hub → 5x5/6x6/7x7 procedural Dungeon → turn-based Combat → descend/boss, checkpoint saves to localStorage.
 > UI rule: minimal + single-purpose screens. No character art (text-only). Logs are single-line (latest only, fixed height, never expand).
 
 ## 1. Snapshot
