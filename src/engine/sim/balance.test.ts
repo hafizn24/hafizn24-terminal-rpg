@@ -32,6 +32,7 @@ describe('damage rules', () => {
   it('scales basic attack off the class primary stat', () => {
     expect(getPrimaryStatForClass('warrior')).toBe('str');
     expect(getPrimaryStatForClass('rogue')).toBe('dex');
+    expect(getPrimaryStatForClass('ranger')).toBe('dex');
     expect(getPrimaryStatForClass('mage')).toBe('int');
     expect(getPrimaryStatForClass('cleric')).toBe('int');
     // A mage with 0 STR still hits via INT (the old STR-only formula returned ~6).
@@ -81,11 +82,11 @@ describe('progression rules', () => {
     expect(r.stats.def).toBe(mage.baseStats.def + mage.growth.def * (r.level - 1));
   });
 
-  it('allocates every stat type, including def', () => {
+  it('allocates combat stats (DEF is earned, not bought)', () => {
     const mage = CLASSES.find((c) => c.id === 'mage')!;
     const base = { ...mage.baseStats };
-    expect(applyStatPointToStats(base, 'def').stats.def).toBe(base.def + 1);
     expect(applyStatPointToStats(base, 'hp').stats.maxHp).toBe(base.maxHp + 10);
+    expect(applyStatPointToStats(base, 'def').spent).toBe(false);
     expect(applyStatPointToStats(base, 'nope' as never).spent).toBe(false);
   });
 
@@ -129,13 +130,14 @@ describe('seeded rng + generation', () => {
 });
 
 describe('class skills', () => {
-  it('gives every class 3 skills unlocked at 1/4/8', () => {
+  it('gives every class 4 skills unlocked at 1/4/8/12', () => {
     for (const cls of CLASSES) {
-      expect(cls.skills).toHaveLength(3);
+      expect(cls.skills).toHaveLength(4);
       expect(unlockedSkills(cls.skills, 1)).toHaveLength(1);
       expect(unlockedSkills(cls.skills, 4)).toHaveLength(2);
       expect(unlockedSkills(cls.skills, 8)).toHaveLength(3);
-      expect(unlockedSkills(cls.skills, 30)).toHaveLength(3);
+      expect(unlockedSkills(cls.skills, 12)).toHaveLength(4);
+      expect(unlockedSkills(cls.skills, 30)).toHaveLength(4);
     }
   });
 
@@ -221,16 +223,18 @@ describe('dungeon generation', () => {
     }
   });
 
-  it('cursed floors have no shrine; every modifier appears', () => {
+  it('rolls only positive-variance modifiers and keeps at most one shrine', () => {
     const seen = new Set<string>();
+    let shrineFloors = 0;
     for (let seed = 1; seed <= 200; seed++) {
       const d = generateDungeon(7, rngForFloor(seed, 7));
       seen.add(d.modifier);
-      if (d.modifier === 'cursed') {
-        expect(d.rooms.flat().filter((r) => r.type === 'shrine')).toHaveLength(0);
-      }
+      const shrines = d.rooms.flat().filter((r) => r.type === 'shrine');
+      expect(shrines.length).toBeLessThanOrEqual(1);
+      if (shrines.length === 1) shrineFloors++;
     }
-    expect(seen).toEqual(new Set(['none', 'golden', 'cursed', 'swarm']));
+    expect(shrineFloors).toBeGreaterThan(150);
+    expect(seen).toEqual(new Set(['none', 'golden', 'swarm']));
   });
 });
 

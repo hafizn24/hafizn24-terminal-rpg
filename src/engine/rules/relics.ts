@@ -20,6 +20,8 @@ export interface RelicMods {
   healOnKill: number;
   /** Skill damage multiplier while HP is below 30%. */
   lowHpSkillMult: number;
+  /** Flat skill damage multiplier (Sage Stone). */
+  skillMult: number;
 }
 
 export const EMPTY_RELICS: RelicMods = {
@@ -31,6 +33,7 @@ export const EMPTY_RELICS: RelicMods = {
   defBonus: 0,
   healOnKill: 0,
   lowHpSkillMult: 1,
+  skillMult: 1,
 };
 
 /** Pure fold over relic ids — unknown ids are ignored (forward-compatible). */
@@ -61,6 +64,22 @@ export function getRelicMods(relics: readonly string[]): RelicMods {
         break;
       case 'adrenaline':
         mods.lowHpSkillMult *= 1.25;
+        break;
+      case 'vampiric_fang':
+        mods.healOnKill += 4;
+        mods.lowHpSkillMult *= 1.1;
+        break;
+      case 'phoenix_feather':
+        mods.dodgeBonus += 0.05;
+        mods.healOnKill += 5;
+        break;
+      case 'sage_stone':
+        mods.skillCostReduction += 2;
+        mods.skillMult *= 1.1;
+        break;
+      case 'titan_plate':
+        mods.defBonus += 6;
+        mods.trapMult *= 0.75;
         break;
       default:
         break;

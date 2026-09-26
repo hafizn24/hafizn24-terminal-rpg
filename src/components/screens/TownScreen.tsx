@@ -5,6 +5,7 @@ import { playSfx } from '../../utils/audio';
 import { Button } from '../ui/Button';
 import { Panel } from '../ui/Panel';
 import { SoundToggle } from '../ui/SoundToggle';
+import { TutorialOverlay } from '../ui/TutorialOverlay';
 
 /** Inn price: 15g x level, escalating per consecutive rest without descending. */
 export function getInnCost(level: number, restsThisVisit: number): number {
@@ -17,7 +18,6 @@ export function TownScreen() {
   const setScreen = useGameStore((s) => s.setScreen);
   const setDungeon = useGameStore((s) => s.setDungeon);
   const setSelectedShop = useGameStore((s) => s.setSelectedShop);
-  const setStatsReturn = useGameStore((s) => s.setStatsReturn);
   const save = useGameStore((s) => s.save);
   const updatePlayer = useGameStore((s) => s.updatePlayer);
   const lastSave = useGameStore((s) => s.lastSave);
@@ -69,13 +69,8 @@ export function TownScreen() {
     setScreen('dungeon');
   };
 
-  const goStats = (from: 'town') => {
-    setStatsReturn(from);
-    setScreen('stats');
-  };
-
   const goShop = (shop: 'blacksmith' | 'potion_shop' | 'magic_shop') => {
-    setSelectedShop(shop, 'town');
+    setSelectedShop(shop);
     setScreen('shop');
   };
 
@@ -99,15 +94,23 @@ export function TownScreen() {
         </div>
       )}
 
+      <TutorialOverlay where="town" />
+
       <div className="grid grid-cols-2 gap-2 w-full">
         <Button onClick={handleRest}>Inn ({innCost}g)</Button>
-        <Button onClick={() => goStats('town')}>
+        <Button onClick={() => setScreen('stats')}>
           {points > 0 ? `Stats (${points})` : 'Stats'}
         </Button>
-        <Button onClick={() => setScreen('questBoard')}>Quests</Button>
         <Button onClick={() => setScreen('inventory')}>Inventory</Button>
         <Button onClick={() => setScreen('meta')}>Renown</Button>
         <Button onClick={() => setScreen('bestiary')}>Bestiary</Button>
+        <Button onClick={() => setScreen('smithy')}>Smithy</Button>
+      </div>
+
+      <div className="grid grid-cols-1 gap-2 w-full">
+        <Button variant="ghost" onClick={() => setScreen('achievements')}>
+          Feats — track your legend
+        </Button>
       </div>
 
       <Panel title="Shops — resupply here" titleAlign="center">
@@ -120,6 +123,9 @@ export function TownScreen() {
           </Button>
           <Button size="sm" variant="ghost" className="w-full" onClick={() => goShop('magic_shop')}>
             Magic Shop <span className="text-terminal-dim normal-case">— charms & spells</span>
+          </Button>
+          <Button size="sm" variant="ghost" className="w-full" onClick={() => setScreen('smithy')}>
+            Smithy <span className="text-terminal-dim normal-case">— enchant to +5</span>
           </Button>
         </div>
       </Panel>

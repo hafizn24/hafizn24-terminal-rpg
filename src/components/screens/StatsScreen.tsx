@@ -10,22 +10,8 @@ import { StatAllocationPanel } from '../ui/StatAllocationPanel';
 export function StatsScreen() {
   const player = useGameStore((s) => s.player);
   const setScreen = useGameStore((s) => s.setScreen);
-  const statsReturn = useGameStore((s) => s.statsReturn);
 
   if (!player) return null;
-
-  const goBack = () => {
-    if (statsReturn === 'inventory') setScreen('inventory');
-    else if (statsReturn === 'dungeon') setScreen('dungeon');
-    else setScreen('town');
-  };
-
-  const backLabel =
-    statsReturn === 'inventory'
-      ? '[Back to Inventory]'
-      : statsReturn === 'dungeon'
-        ? '[Back to Dungeon]'
-        : '[Back to Town]';
 
   return (
     <div className="flex flex-col gap-4 animate-fade-in">
@@ -33,8 +19,8 @@ export function StatsScreen() {
         <h1 className="text-terminal-cyan text-lg tracking-widest uppercase">
           Stats
         </h1>
-        <Button variant="ghost" size="sm" onClick={goBack}>
-          {backLabel}
+        <Button variant="ghost" size="sm" onClick={() => setScreen('town')}>
+          [Back to Town]
         </Button>
       </div>
       <StatAllocationPanel />

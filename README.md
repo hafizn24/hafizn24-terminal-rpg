@@ -16,17 +16,18 @@ Installable offline (PWA): the app shell is precached by the service worker afte
 | Where   | Keys                              |
 | ------- | --------------------------------- |
 | Dungeon | WASD / Arrows or tap · `E` descends stairs |
-| Combat  | `1` attack · `2/Q/E` skills · `3` potion · `4` run · `5/G` guard |
+| Combat  | `1` attack · `2/Q/E/R` skills (R = Lv12 ultimate) · `3` potion · `4` run · `5/G` guard |
 
-Rest at the Inn to save (it costs gold — no free full heals). Shrines heal once. Elites drop bonus loot. Bosses gate the stairs every 5 floors.
+Rest at the Inn to save (it costs gold — no free full heals). Forge at the Smithy (+1..+5 enchants). Shrines heal once. Elites drop bonus loot. Bosses gate the stairs every 5 floors.
 
 ## Highlights
 
-- **4 classes × 3 skills** — unlock at Lv 1/4/8 with real roles (Rage, Weaken, Smoke Veil, Cleanse, wards), not bigger numbers.
-- **30-floor authored spine** with 6 tiered bosses and an ending, then endless mode.
-- **Relic drafts** after every boss, floor modifiers (Golden/Cursed/Swarm), locked vaults, growing maze grids, retiring enemy tiers with variants.
-- **Meta-progression earned through play** — war shards buy Renown unlocks; daily seeded challenge with a local leaderboard; Bestiary collection; run summaries on death.
-- **Deterministic engine** — seeded runs, 1,000-run balance suite (`npm test`), pure rules in `src/engine/`.
+- **5 classes × 4 skills** — unlock at Lv 1/4/8/12 with real roles (Rage, Weaken, Smoke Veil, Cleanse, wards) + Lv12 ultimates (Kingsbane, Meteor, Shadowstep, Judgment, Volley).
+- **30-floor authored spine** with 6 tiered bosses and an ending, then endless mode with rotating affixes (Vampiric/Arcane/Ironclad).
+- **Relic drafts** after every boss (12 relics), floor modifiers (Golden/Swarm), locked vaults, growing maze grids, retiring enemy tiers with variants (20 foes).
+- **Meta-progression earned through play** — war shards buy Renown unlocks; daily seeded challenge with a local leaderboard; Bestiary collection; 12 skill-based achievements; run summaries on death.
+- **Smithy + gear compare** — enchant weapons/armor to +5 (100×2^level gold sink), ▲/sidegrade deltas in Shop/Inventory.
+- **Deterministic engine** — seeded runs, 1,250-run balance suite (`npm test`), pure rules in `src/engine/`.
 
 ## Scripts
 
@@ -42,6 +43,6 @@ CI (`.github/workflows/ci.yml`) runs all four on every push/PR.
 
 ## Tech
 
-React 18 + Zustand + Vite 5 + Tailwind + TypeScript (strict). WebAudio synth SFX (no assets), `localStorage` saves with versioned migrations, opt-in local-only telemetry (off by default, JSON export in Renown).
+React 18 + Zustand + Vite 5 + Tailwind + TypeScript (strict). WebAudio synth SFX (no assets), `localStorage` saves with versioned migrations, opt-in local-only telemetry (off by default, recorded silently).
 
 Repo map for humans and agents: [`docs/CODEBASE_OVERVIEW.md`](docs/CODEBASE_OVERVIEW.md).

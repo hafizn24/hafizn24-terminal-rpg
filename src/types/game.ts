@@ -1,4 +1,4 @@
-export type CharacterClass = 'warrior' | 'mage' | 'rogue' | 'cleric';
+export type CharacterClass = 'warrior' | 'mage' | 'rogue' | 'cleric' | 'ranger';
 
 export type Screen =
   | 'title'
@@ -10,11 +10,12 @@ export type Screen =
   | 'stats'
   | 'gameOver'
   | 'shop'
-  | 'questBoard'
   | 'meta'
   | 'bestiary'
   | 'relicDraft'
-  | 'ending';
+  | 'ending'
+  | 'smithy'
+  | 'achievements';
 
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic';
 
@@ -25,7 +26,6 @@ export type RoomType =
   | 'monster'
   | 'treasure'
   | 'trap'
-  | 'shop'
   | 'stairs'
   | 'boss'
   | 'elite'
@@ -34,8 +34,11 @@ export type RoomType =
   | 'wall'
   | 'vault';
 
-/** One rolled floor modifier — variance per line of code. Shown in the header. */
-export type FloorModifier = 'none' | 'golden' | 'cursed' | 'swarm';
+/** One rolled floor modifier — positive variance only. Shown in the header. */
+export type FloorModifier = 'none' | 'golden' | 'swarm';
+
+/** Endless affix (floors 31+): rotating pressure beyond the seal. */
+export type FloorAffix = 'none' | 'vampiric' | 'arcane' | 'ironclad';
 
 /** Combat skill roles: damage vs. setup/payoff utility (never just a bigger number). */
 export type SkillKind =
@@ -47,7 +50,8 @@ export type SkillKind =
   | 'weaken'
   | 'critNext'
   | 'evade'
-  | 'cleanse';
+  | 'cleanse'
+  | 'ultimate';
 
 export type StatType = 'str' | 'dex' | 'int' | 'hp' | 'mp' | 'def';
 
@@ -81,7 +85,7 @@ export interface ClassDefinition {
   ascii: string;
   baseStats: Stats;
   growth: Record<StatType, number>;
-  /** Three skills per class, unlocked at levels 1 / 4 / 8. skills[0] is the opener. */
+  /** Four skills per class, unlocked at levels 1 / 4 / 8 / 12. skills[0] is the opener. */
   skills: ClassSkill[];
 }
 
@@ -97,8 +101,6 @@ export interface Item {
   mpRestoreAmount?: number;
   effect?: 'bomb' | 'smoke';
   effectPower?: number;
-  /** Removes burn/poison when used (the only cleanse outside the Cleric). */
-  cleanse?: boolean;
   ascii?: string;
 }
 
@@ -181,7 +183,6 @@ export interface Room {
   enemy?: Enemy;
   item?: Item;
   trapDamage?: number;
-  shopItems?: Item[];
 }
 
 export interface DungeonState {
@@ -191,25 +192,8 @@ export interface DungeonState {
   /** Grows with depth: 5 (floors 1-10), 6 (11-20), 7 (21+). */
   gridSize: number;
   modifier: FloorModifier;
-}
-
-export interface Quest {
-  id: string;
-  name: string;
-  description: string;
-  type: 'daily' | 'side';
-  objective: {
-    type: 'kill' | 'floor' | 'gold';
-    target: string;
-    required: number;
-  };
-  progress: number;
-  reward: {
-    gold: number;
-    exp: number;
-    itemId?: string;
-  };
-  completed: boolean;
+  /** Endless pressure affix (floors 31+). Defaults to 'none'. */
+  affix: FloorAffix;
 }
 
 export interface GameStats {
@@ -246,6 +230,8 @@ export interface MetaState {
   kills: Record<string, number>;
   /** Set by beating floor 30. Unlocks endless descent past the seal. */
   endlessUnlocked: boolean;
+  /** Unlocked achievement ids (local, earned through play). */
+  achievements?: string[];
 }
 
 export interface DailyEntry {
@@ -260,7 +246,6 @@ export interface GameState {
   currentScreen: Screen;
   player: Player | null;
   dungeon: DungeonState | null;
-  quests: Quest[];
   gameOverMessage: string;
   lastSave: string;
 }

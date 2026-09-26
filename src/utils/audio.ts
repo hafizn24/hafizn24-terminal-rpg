@@ -7,7 +7,6 @@
  * call, which always follows a user gesture. Everything is try/catch — audio
  * must never break the game. Honors the persisted mute flag.
  */
-
 export type SfxName =
   | 'hit'
   | 'crit'
@@ -21,7 +20,10 @@ export type SfxName =
   | 'rest'
   | 'relic'
   | 'boss'
-  | 'click';
+  | 'click'
+  | 'enchant'
+  | 'achievement'
+  | 'ultimate';
 
 const MUTE_KEY = 'terminal_rpg_muted';
 const MASTER_GAIN = 0.12;
@@ -93,6 +95,18 @@ const SCORES: Record<SfxName, Tone[]> = {
   relic: [{ freq: 784, end: 1046, dur: 0.2, type: 'triangle' }],
   boss: [{ freq: 110, end: 82, dur: 0.4, type: 'square' }],
   click: [{ freq: 600, dur: 0.03, type: 'square' }],
+  enchant: [
+    { freq: 660, dur: 0.08, type: 'triangle' },
+    { freq: 990, dur: 0.12, type: 'triangle', delay: 0.08 },
+  ],
+  achievement: [
+    { freq: 784, dur: 0.1, type: 'sine' },
+    { freq: 1046, dur: 0.15, type: 'sine', delay: 0.1 },
+  ],
+  ultimate: [
+    { freq: 220, end: 880, dur: 0.25, type: 'sawtooth' },
+    { freq: 880, end: 1760, dur: 0.2, type: 'square', delay: 0.15 },
+  ],
 };
 
 export function playSfx(name: SfxName): void {

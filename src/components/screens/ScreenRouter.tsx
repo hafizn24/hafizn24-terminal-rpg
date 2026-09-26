@@ -8,11 +8,12 @@ import { InventoryScreen } from './InventoryScreen';
 import { StatsScreen } from './StatsScreen';
 import { GameOverScreen } from './GameOverScreen';
 import { ShopScreen } from './ShopScreen';
-import { QuestBoardScreen } from './QuestBoardScreen';
 import { MetaScreen } from './MetaScreen';
 import { BestiaryScreen } from './BestiaryScreen';
 import { RelicDraftScreen } from './RelicDraftScreen';
 import { EndingScreen } from './EndingScreen';
+import { SmithyScreen } from './SmithyScreen';
+import { AchievementsScreen } from './AchievementsScreen';
 
 const screenMap: Record<string, React.FC> = {
   title: TitleScreen,
@@ -24,11 +25,12 @@ const screenMap: Record<string, React.FC> = {
   stats: StatsScreen,
   gameOver: GameOverScreen,
   shop: ShopScreen,
-  questBoard: QuestBoardScreen,
   meta: MetaScreen,
   bestiary: BestiaryScreen,
   relicDraft: RelicDraftScreen,
   ending: EndingScreen,
+  smithy: SmithyScreen,
+  achievements: AchievementsScreen,
 };
 
 export function ScreenRouter() {

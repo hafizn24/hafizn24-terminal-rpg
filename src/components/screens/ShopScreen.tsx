@@ -7,6 +7,7 @@ import { Panel } from '../ui/Panel';
 import { ITEMS, SHOP_STOCK } from '../../game/data/items';
 import { getRarityColor } from '../../utils/rng';
 import { playSfx } from '../../utils/audio';
+import { compareGear, formatGearDelta } from '../../engine/rules/gear';
 import type { Item } from '../../types/game';
 
 type ShopMode = 'buy' | 'sell';
@@ -15,15 +16,17 @@ const SHOP_NAMES: Record<ShopType, string> = {
   blacksmith: 'Blacksmith',
   potion_shop: 'Potion Shop',
   magic_shop: 'Magic Shop',
+  smithy: 'Smithy',
 };
 
 const SHOP_ICONS: Record<ShopType, string> = {
   blacksmith: 'S',
   potion_shop: 'P',
   magic_shop: 'M',
+  smithy: 'F',
 };
 
-const ACCESSORY_IDS = new Set(['lucky_charm', 'iron_ring', 'sage_amulet']);
+const ACCESSORY_IDS = new Set(['lucky_charm', 'iron_ring', 'sage_amulet', 'ranger_cloak', 'void_ward']);
 
 /** Sell price is 50% of buy price (floor). */
 export function getSellPrice(item: Item): number {
@@ -36,7 +39,7 @@ export function isValuableItem(item: Item): boolean {
 }
 
 export function ShopScreen() {
-  const { player, updatePlayer, setScreen, selectedShop, shopReturn } = useGameStore();
+  const { player, updatePlayer, setScreen, selectedShop } = useGameStore();
   const addLog = useUIStore((s) => s.addLog);
   const [mode, setMode] = useState<ShopMode>('buy');
   const [pendingConfirm, setPendingConfirm] = useState<string | null>(null);
@@ -66,8 +69,6 @@ export function ShopScreen() {
   const junkCount = junkSlots.reduce((sum, s) => sum + s.quantity, 0);
 
   if (!player) return null;
-
-  const backLabel = shopReturn === 'dungeon' ? '[Back to Dungeon]' : '[Back to Town]';
 
   const getEquippedSlot = (itemId: string): string | null => {
     if (player.equipment.weapon?.id === itemId) return 'Weapon';
@@ -115,7 +116,6 @@ export function ShopScreen() {
 
     const newGold = p.gold + gain;
     useGameStore.getState().updatePlayer({ gold: newGold, inventory: newInv });
-    useGameStore.getState().updateQuestProgress('gold', 'any', newGold);
     useGameStore.getState().save();
     addLog(`Sold ${qty}x ${slot.item.name} for ${gain} gold.`, 'loot');
   };
@@ -165,7 +165,6 @@ export function ShopScreen() {
     const newInv = p.inventory.filter((s) => !junkIds.has(s.item.id));
     const newGold = p.gold + junkTotal;
     useGameStore.getState().updatePlayer({ gold: newGold, inventory: newInv });
-    useGameStore.getState().updateQuestProgress('gold', 'any', newGold);
     useGameStore.getState().save();
     addLog(`Bulk-sold ${junkCount}x loot for ${junkTotal} gold.`, 'loot');
   };
@@ -176,8 +175,8 @@ export function ShopScreen() {
         <h1 className="text-terminal-cyan text-lg tracking-widest uppercase">
           [{SHOP_ICONS[shopType]}] {SHOP_NAMES[shopType]}
         </h1>
-        <Button variant="ghost" size="sm" onClick={() => setScreen(shopReturn)}>
-          {backLabel}
+        <Button variant="ghost" size="sm" onClick={() => setScreen('town')}>
+          [Back to Town]
         </Button>
       </div>
 
@@ -240,6 +239,17 @@ export function ShopScreen() {
                         ))}
                       </div>
                     )}
+                    {player && (item.type === 'weapon' || item.type === 'armor') && (() => {
+                      const d = compareGear(player, item);
+                      if (!d) return null;
+                      const label = formatGearDelta(d);
+                      const up = d.atkDelta + d.defDelta + d.hpDelta + d.mpDelta > 0;
+                      return (
+                        <div className={`text-[10px] ${up ? 'text-terminal-cyan' : 'text-terminal-dim'}`}>
+                          {up ? '▲ ' : ''}{label}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <Button
                     size="sm"

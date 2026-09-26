@@ -1,26 +1,68 @@
-import { useEffect, useRef, useMemo, useCallback } from 'react';
+import { useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { useGameStore, isCheckpointFloor } from '../../game/store/gameStore';
 import { useUIStore } from '../../game/store/uiStore';
 import { Button } from '../ui/Button';
 import { Panel } from '../ui/Panel';
 import { LogPanel } from '../terminal/LogPanel';
+import { TutorialOverlay } from '../ui/TutorialOverlay';
 import { FINAL_FLOOR, generateDungeon, getAdjacentRooms, isBossFloor } from '../../game/systems/dungeonGenerator';
 import { calcDodgeChance } from '../../utils/rng';
 import { playSfx } from '../../utils/audio';
+import { vibrate } from '../../utils/haptics';
 import { trapDexForFloor } from '../../engine/rules/damage';
 import { getRelicMods } from '../../engine/rules/relics';
 import { rngForFloor } from '../../engine/rng';
 import { getFloorTheme } from '../../game/data/ascii';
 import { useMetaStore } from '../../game/store/metaStore';
 import { useKeyboard } from '../../hooks/useKeyboard';
-import type { FloorModifier, Room } from '../../types/game';
+import type { FloorAffix, FloorModifier, Room } from '../../types/game';
 
 const MODIFIER_LABEL: Record<FloorModifier, string> = {
   none: '',
   golden: ' · GOLDEN',
-  cursed: ' · CURSED',
   swarm: ' · SWARM',
 };
+
+const AFFIX_LABEL: Record<FloorAffix, string> = {
+  none: '',
+  vampiric: ' · VAMPIRIC',
+  arcane: ' · ARCANE',
+  ironclad: ' · IRONCLAD',
+};
+
+/** Memoized grid cell — avoids re-rendering 49 buttons on every log tick. */
+const DungeonCell = memo(function DungeonCell({
+  room,
+  isPlayer,
+  adjacent,
+  explored,
+  symbol,
+  className,
+  description,
+  onMove,
+}: {
+  room: Room;
+  isPlayer: boolean;
+  adjacent: boolean;
+  explored: boolean;
+  symbol: string;
+  className: string;
+  description: string;
+  onMove: (x: number, y: number) => void;
+}) {
+  void isPlayer;
+  void explored;
+  return (
+    <button
+      onClick={() => onMove(room.x, room.y)}
+      disabled={!adjacent || room.type === 'wall'}
+      aria-label={room.explored ? `Move to ${room.x},${room.y}: ${description}` : `Move to ${room.x},${room.y}: unexplored`}
+      className={`w-9 h-9 flex items-center justify-center text-sm font-bold border min-w-[44px] min-h-[44px] focus:outline-none focus:ring-2 focus:ring-terminal-cyan ${className} ${adjacent ? 'cursor-pointer' : 'cursor-default'}`}
+    >
+      {symbol}
+    </button>
+  );
+});
 
 /** Seeded stream for a floor, or undefined for legacy unseeded generation. */
 function floorRng(floor: number) {
@@ -106,7 +148,8 @@ export function DungeonScreen() {
       case 'treasure': {
         if (room.item) {
           playSfx('treasure');
-          addLog(`Found: ${room.item.name}!`, 'loot');
+          vibrate(15);
+          addLog(`Vault opened: ${room.item.name}!`, 'loot');
           useGameStore.getState().addItem(room.item.id, 1);
           // Loot the chest so re-entering doesn't farm infinite items.
           clearRoomAt(room.x, room.y, { item: undefined });
@@ -119,7 +162,7 @@ export function DungeonScreen() {
         // The key type finally has a job: one key, one vault, epic-tier loot.
         const keySlot = p.inventory.find((sl) => sl.item.id === 'dungeon_key' && sl.quantity > 0);
         if (!keySlot) {
-          addLog('A sealed vault. It needs a dungeon key (elites, chests, shops).', 'info');
+          addLog('A sealed vault. It needs a dungeon key (elites, chests).', 'info');
           break;
         }
         const newInv = p.inventory
@@ -128,8 +171,17 @@ export function DungeonScreen() {
         updatePlayer({ inventory: newInv });
         if (room.item) {
           playSfx('treasure');
+          vibrate(15);
           addLog(`Vault opened: ${room.item.name}!`, 'loot');
           useGameStore.getState().addItem(room.item.id, 1);
+          try {
+            if (useMetaStore.getState().unlockAchievement('vault_raider')) {
+              addLog('Feat unlocked: Vault Raider!', 'loot');
+              playSfx('achievement');
+            }
+          } catch {
+            /* cosmetic */
+          }
         } else {
           addLog('An empty vault. Already claimed.', 'info');
         }
@@ -152,6 +204,7 @@ export function DungeonScreen() {
         const wardMult = getRelicMods(p.relics ?? []).trapMult;
         const dmg = Math.max(1, Math.floor((room.trapDamage || 10) * wardMult));
         playSfx('trap');
+        vibrate(30);
         const newHp = Math.max(0, p.stats.hp - dmg);
         updatePlayer({ stats: { ...p.stats, hp: newHp } });
         addLog(`Trap! Took ${dmg} damage! (One-shot trap, now disarmed.)`, 'danger');
@@ -160,11 +213,6 @@ export function DungeonScreen() {
       }
       case 'stairs':
         addLog('Found the stairs! Press E or >> Descend to go deeper.', 'system');
-        break;
-      case 'shop':
-        addLog('A mysterious merchant appears!', 'info');
-        useGameStore.getState().setSelectedShop('potion_shop', 'dungeon');
-        useGameStore.getState().setScreen('shop');
         break;
       case 'boss':
         if (room.enemy) {
@@ -236,6 +284,18 @@ export function DungeonScreen() {
     const newDungeon = generateDungeon(nextFloor, floorRng(nextFloor));
     setDungeon(newDungeon);
     useGameStore.getState().recordRunFloor(nextFloor);
+    try {
+      const meta = useMetaStore.getState();
+      if (nextFloor >= 10 && meta.unlockAchievement('deep_10')) addLog('Feat unlocked: Delver!', 'loot');
+      if (nextFloor >= 20 && meta.unlockAchievement('deep_20')) addLog('Feat unlocked: Spelunker!', 'loot');
+      if (nextFloor >= 30 && meta.unlockAchievement('deep_30')) addLog('Feat unlocked: Kingslayer!', 'loot');
+      if (nextFloor >= 31 && meta.unlockAchievement('endless')) addLog('Feat unlocked: Sealbreaker!', 'loot');
+    } catch {
+      /* cosmetic */
+    }
+    if (newDungeon.affix !== 'none') {
+      addLog(`Affix: ${newDungeon.affix.toUpperCase()} — endless pressure.`, 'danger');
+    }
     if (isBossFloor(nextFloor)) {
       addLog(`Descended to floor ${nextFloor} — BOSS. Checkpoint saved.`, 'system');
     } else if (isCheckpointFloor(nextFloor)) {
@@ -244,8 +304,6 @@ export function DungeonScreen() {
       const nextCheckpoint = Math.ceil(nextFloor / 5) * 5;
       addLog(`Descended to floor ${nextFloor}. Unsaved — reach floor ${nextCheckpoint} to save.`, 'system');
     }
-    const st = useGameStore.getState();
-    st.updateQuestProgress('floor', 'any', nextFloor);
     useGameStore.setState((s) => ({
       stats: { ...s.stats, bestFloor: Math.max(s.stats.bestFloor, nextFloor) },
     }));
@@ -306,7 +364,6 @@ export function DungeonScreen() {
       case 'shrine': return '+';
       case 'treasure': return '●';
       case 'trap': return '×';
-      case 'shop': return '$';
       case 'stairs': return '▼';
       case 'boss': return '▲';
       case 'start': return '·';
@@ -332,7 +389,6 @@ export function DungeonScreen() {
       case 'shrine': return `${base}text-terminal-cyan border-terminal-cyan/50 font-bold`;
       case 'treasure': return `${base}text-terminal-yellow border-terminal-yellow/40 font-bold`;
       case 'trap': return `${base}text-terminal-red/70 border-terminal-red/30 line-through`;
-      case 'shop': return `${base}text-terminal-green border-terminal-green/50 font-bold`;
       case 'stairs': return `${base}text-terminal-cyan border-terminal-cyan font-bold shadow-[0_0_6px_rgba(0,255,255,0.25)]`;
       case 'boss': return 'bg-terminal-red/10 text-terminal-red border-terminal-red font-bold shadow-[0_0_8px_rgba(255,0,64,0.3)]';
       case 'wall': return 'bg-terminal-bg text-terminal-dim/40 border-terminal-dim/20 cursor-default';
@@ -350,7 +406,6 @@ export function DungeonScreen() {
       case 'treasure': return room.item ? `Treasure: ${room.item.name}` : 'Looted.';
       case 'trap': return room.trapDamage ? 'Trap!' : 'Disarmed.';
       case 'shrine': return 'Shrine — +30% HP/MP.';
-      case 'shop': return 'Merchant.';
       case 'stairs': return 'Stairs — E to descend.';
       case 'start': return 'Entrance.';
       case 'wall': return 'Collapsed rock — impassable.';
@@ -369,29 +424,33 @@ export function DungeonScreen() {
           {dungeon.modifier !== 'none' && (
             <span className="text-terminal-yellow">{MODIFIER_LABEL[dungeon.modifier]}</span>
           )}
+          {dungeon.affix !== 'none' && (
+            <span className="text-terminal-red">{AFFIX_LABEL[dungeon.affix]}</span>
+          )}
         </h1>
         <Button variant="ghost" size="sm" onClick={handleFlee}>
           {'[Flee]'}
         </Button>
       </div>
 
+      <TutorialOverlay where="dungeon" />
+
       <Panel title={bossFloor ? 'Map — Boss' : 'Map'} className={bossFloor ? 'border-terminal-red/50' : ''}>
         <div className={`flex flex-col items-center gap-1 font-mono p-2 bg-terminal-bg/50 border ${theme.frame}`}>
           {dungeon.rooms.map((row, y) => (
             <div key={y} className="flex gap-1">
-              {row.map((room, x) => (
-                <button
-                  key={`${x}-${y}`}
-                  onClick={() => handleCellClick(x, y)}
-                  disabled={!isAdjacent(x, y) || room.type === 'wall'}
-                  aria-label={room.explored ? `Move to ${x},${y}: ${roomDescription(room)}` : `Move to ${x},${y}: unexplored`}
-                  className={`w-9 h-9 flex items-center justify-center text-sm font-bold border
-                    ${roomStyle(room)} ${
-                    isAdjacent(x, y) ? 'cursor-pointer' : 'cursor-default'
-                  }`}
-                >
-                  {roomTypeSymbol(room)}
-                </button>
+              {row.map((room) => (
+                <DungeonCell
+                  key={`${room.x}-${room.y}`}
+                  room={room}
+                  isPlayer={room.x === dungeon.playerPos.x && room.y === dungeon.playerPos.y}
+                  adjacent={isAdjacent(room.x, room.y)}
+                  explored={room.explored}
+                  symbol={roomTypeSymbol(room)}
+                  className={roomStyle(room)}
+                  description={roomDescription(room)}
+                  onMove={handleCellClick}
+                />
               ))}
             </div>
           ))}

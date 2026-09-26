@@ -9,10 +9,11 @@
 
 export type PrimaryStat = 'str' | 'dex' | 'int';
 
-/** Primary attack stat per class (mage/cleric cast, rogue strikes, warrior hits). */
+/** Primary attack stat per class (mage/cleric cast, rogue/ranger strike, warrior hits). */
 export function getPrimaryStatForClass(cls: string): PrimaryStat {
   switch (cls) {
     case 'rogue':
+    case 'ranger':
       return 'dex';
     case 'mage':
     case 'cleric':
@@ -69,6 +70,8 @@ export function getSkillAttack(
       return tStr * 0.4 + tInt * 2.2;
     case 'rogue':
       return tStr + tDex * 1.2 + tInt * 0.3;
+    case 'ranger':
+      return tStr * 0.6 + tDex * 1.8 + tInt * 0.4;
     case 'cleric':
       return tStr * 0.7 + tInt * 1.6;
     default:

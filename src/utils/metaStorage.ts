@@ -3,7 +3,7 @@ import type { DailyEntry, MetaState } from '../types/game';
 const META_KEY = 'terminal_rpg_meta';
 const DAILY_KEY = 'terminal_rpg_daily';
 
-export const DEFAULT_META: MetaState = { shards: 0, upgrades: {}, kills: {}, endlessUnlocked: false };
+export const DEFAULT_META: MetaState = { shards: 0, upgrades: {}, kills: {}, endlessUnlocked: false, achievements: [] };
 
 export function loadMeta(): MetaState {
   try {
@@ -15,6 +15,7 @@ export function loadMeta(): MetaState {
       upgrades: parsed.upgrades && typeof parsed.upgrades === 'object' ? parsed.upgrades : {},
       kills: parsed.kills && typeof parsed.kills === 'object' ? parsed.kills : {},
       endlessUnlocked: parsed.endlessUnlocked === true,
+      achievements: Array.isArray(parsed.achievements) ? (parsed.achievements as string[]) : [],
     };
   } catch {
     return { ...DEFAULT_META };
